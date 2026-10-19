@@ -30,6 +30,8 @@ window.__ModuleLoader__.load({
     const TAB_ID = 'dsh-decision-workbench/workbench'
     const POLL_MS = 1000
     const RETRY_OPEN_MS = 3000
+    // Below this pane width the two-column workbench becomes list → detail.
+    const SPLIT_MIN_WIDTH = 520
 
     // --- copy -----------------------------------------------------------------
 
@@ -59,6 +61,8 @@ window.__ModuleLoader__.load({
       'workbench.regenerate': '重新生成',
       'workbench.progress': '已决定',
       'workbench.blockingLeft': '必决还剩',
+      'list.title': '决策清单',
+      'detail.empty': '从左侧选择一题开始',
       'filter.all': '全部',
       'filter.open': '未完成',
       'priority.blocking': '必决',
@@ -159,6 +163,8 @@ window.__ModuleLoader__.load({
       'workbench.regenerate': 'Generate again',
       'workbench.progress': 'Decided',
       'workbench.blockingLeft': 'Blocking left',
+      'list.title': 'Decisions',
+      'detail.empty': 'Choose a decision on the left',
       'filter.all': 'All',
       'filter.open': 'Open',
       'priority.blocking': 'Blocking',
@@ -1389,6 +1395,22 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState(null)
       const [digest, setDigest] = React.useState(null)
       const [busy, setBusy] = React.useState('')
+      const [width, setWidth] = React.useState(0)
+      const rootRef = React.useRef(null)
+
+      React.useEffect(() => {
+        const element = rootRef.current
+        if (!element) return undefined
+        const update = () => setWidth(element.clientWidth || 0)
+        update()
+        if (typeof ResizeObserver === 'undefined') {
+          window.addEventListener('resize', update)
+          return () => window.removeEventListener('resize', update)
+        }
+        const observer = new ResizeObserver(update)
+        observer.observe(element)
+        return () => observer.disconnect()
+      }, [workbench === null])
 
       const applyRemote = React.useCallback(
         (next) => {
@@ -1479,6 +1501,22 @@ window.__ModuleLoader__.load({
       }
 
       const selectedItem = workbench && selectedId ? workbench.items.find((item) => item.id === selectedId) : null
+
+      // Wide panes keep the designed two-column workbench (list left, detail
+      // right). A narrow pane falls back to list → detail navigation. The
+      // split opens on the first unresolved decision so the panel is never a
+      // blank right half.
+      React.useEffect(() => {
+        if (!workbench || workbench.items.length === 0) return
+        if (selectedId !== null && !workbench.items.some((item) => item.id === selectedId)) {
+          setSelectedId(null)
+          return
+        }
+        if (width < SPLIT_MIN_WIDTH || selectedId !== null) return
+        const first = workbench.items.find((item) => item.status === 'unseen') || workbench.items[0]
+        setSelectedId(first.id)
+        postJson('/item', { sessionId, workbenchId: workbench.id, itemId: first.id }).catch(() => {})
+      }, [workbench, selectedId, width, sessionId])
 
       // Lazy explanation: opening an item starts one host-side generation.
       React.useEffect(() => {
@@ -1618,6 +1656,7 @@ window.__ModuleLoader__.load({
       const stats = countItems(workbench.items)
       const generating = workbench.status === 'generating'
       const failed = workbench.status === 'failed'
+      const split = width >= SPLIT_MIN_WIDTH
       const header = h(
         'div',
         {
@@ -1722,15 +1761,18 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', style: buttonStyle(false), onClick: props.onChooseAnother }, t('workbench.chooseAnother')),
           ),
         )
-      } else if (selectedItem) {
-        body = h(
-          'div',
-          { style: { ...scrollArea, padding: '10px 14px 20px', display: 'flex', flexDirection: 'column', gap: 10 } },
-          h(
-            'button',
-            { type: 'button', style: { ...linkStyle, alignSelf: 'flex-start' }, onClick: () => setSelectedId(null) },
-            `‹ ${t('detail.back')}`,
-          ),
+      } else {
+        const detail = selectedItem
+          ? h(
+              'div',
+              { style: { ...scrollArea, padding: '10px 14px 20px', display: 'flex', flexDirection: 'column', gap: 10 } },
+              split
+                ? null
+                : h(
+                    'button',
+                    { type: 'button', style: { ...linkStyle, alignSelf: 'flex-start' }, onClick: () => setSelectedId(null) },
+                    `‹ ${t('detail.back')}`,
+                  ),
           h(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: 5 } },
@@ -1834,14 +1876,46 @@ window.__ModuleLoader__.load({
             threadState: selectedItem.threadState,
             onAsk: ask,
           }),
-        )
-      } else {
-        body = h(DecisionList, {
-          workbench,
-          t,
-          selectedId,
-          onSelect: openItem,
-        })
+            )
+          : null
+
+        if (split) {
+          const leftWidth = Math.max(176, Math.min(250, Math.round(width * 0.36)))
+          body = h(
+            'div',
+            { style: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' } },
+            h(
+              'div',
+              {
+                style: {
+                  width: leftWidth,
+                  flex: `0 0 ${leftWidth}px`,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderRight: `1px solid ${T.border}`,
+                },
+              },
+              h(
+                'div',
+                { style: { padding: '8px 10px 0', fontSize: 12, fontWeight: 600, color: T.secondary } },
+                t('list.title'),
+              ),
+              h(DecisionList, { workbench, t, selectedId, onSelect: openItem }),
+            ),
+            h(
+              'div',
+              { style: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' } },
+              detail !== null
+                ? detail
+                : h('div', { style: { ...scrollArea, padding: 24, color: T.secondary } }, t('detail.empty')),
+            ),
+          )
+        } else if (detail !== null) {
+          body = detail
+        } else {
+          body = h(DecisionList, { workbench, t, selectedId, onSelect: openItem })
+        }
       }
 
       const footer =
@@ -1874,7 +1948,7 @@ window.__ModuleLoader__.load({
         h('style', { key: 'dsw-dw-keyframes' }, KEYFRAMES),
         h(
           'div',
-          { style: surface },
+          { ref: rootRef, style: surface },
           header,
           notice !== null
             ? h(

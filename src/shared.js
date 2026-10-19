@@ -26,7 +26,7 @@ export const DOCUMENT_EXTENSIONS = Object.freeze([
 
 // Hard limits. They keep one pathological document from turning into an
 // unbounded model request, and keep the panel digest readable.
-export const DECISION_LIMIT = 60
+export const DECISION_LIMIT = 40
 export const MAX_DOCUMENT_CHARS = 60_000
 export const MAX_QUESTION_CHARS = 2_000
 export const MAX_OPTIONS = 6
@@ -423,7 +423,7 @@ export function buildEnumerationPrompt({ documentText, sourcePath, truncated = f
     '4. 文档没有给出备选方案时，options 用空数组 []，不要替用户发明选项。',
     '5. priority 取 blocking（不决定就无法开工/上线）、important（影响方案质量但可后补）、optional（可以以后再说）。',
     '6. line 是问题在文档中的大致行号（从 1 开始）；quote 是能定位该问题的原文片段，不超过 80 字。',
-    '7. 按文档顺序排列，最多 60 项；文档没有任何需要决策的点时返回空数组。',
+    '7. 按文档顺序排列，最多 30 项（优先必决与建议）；文档没有任何需要决策的点时返回空数组。',
     'JSON 结构：',
     '{"title":"文档标题","decisions":[{"title":"短标题（不超过20字）","question":"要决定的问题，一句话","section":"所在章节","priority":"blocking|important|optional","context":"为什么需要决定（不超过80字）","options":[{"label":"方案名","tradeoff":"代价与收益","bestWhen":"什么情况下选它","risk":"主要风险"}],"recommendation":{"label":"推荐的方案名","why":"一句理由"},"line":12,"quote":"原文片段"}]}',
   ].join('\n')

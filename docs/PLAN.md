@@ -1,6 +1,6 @@
 # dsh-decision-workbench · 项目计划
 
-> 状态：**M1 + M2 + M3 已实现并在 DSH Web 0.2.1-rc.2 实测；M4/M5 待做**
+> 状态：**M1 + M2 + M3 已实现并在 DSH Web 0.2.1-rc.2 实测；M4/M5 待做（0.2.1 修复启动无反应并落实双栏布局）**
 > 宿主：DeepSeek Harness Web 0.2.x（当前 0.2.1-rc.2）
 > 设计基线：[INTERACTION.md](INTERACTION.md) · 交互方案全文
 > 实现说明：决策助手使用隔离的只读模型调用（`ctx.llm.stream`），不是带工具的子会话；见 5.4。
@@ -59,6 +59,8 @@
 ```
 
 为什么用 pending + 轮询：命令在 Host 侧执行，而打开右侧栏 Tab 是浏览器侧动作；这条单向通知用一个短轮询完成，与现有插件（如 dsh-delete-turn）的做法一致。后续可替换为 Typert Remote 流，但接口不变。
+
+**命令不能声明 `input` 描述符。** 宿主命令一旦带 `input`，客户端会把不带参数的 `/decision` 解析为 leading-input 阶段，只把命令名留在输入框里等参数，并不会执行 handler——表现就是“输入后没有任何反应”。去掉该字段后两种形态都会立即执行。
 
 ### 2.3 命令文案
 

@@ -317,14 +317,28 @@ export function apply(ctx) {
     return agents && typeof agents.get === 'function' ? agents.get(sessionId) : undefined
   }
 
-  function workspaceOf(agent) {
+  async function resolveWorkspace(agent, signal) {
     const direct = sessionOf(agent)?.header?.cwd
     if (typeof direct === 'string' && direct !== '') return direct
-    try {
-      const resolved = ctx.get('workingDirectory')?.get?.(sessionOf(agent))
-      if (typeof resolved === 'string' && resolved !== '') return resolved
-    } catch {
-      // fall through
+    const workingDirectory = ctx.get('workingDirectory')
+    if (workingDirectory) {
+      // A fresh session may have no committed cwd yet; `ensure` resolves and
+      // commits the deployment default so `/decision` works on a brand-new
+      // session instead of failing with "no workspace".
+      try {
+        if (typeof workingDirectory.ensure === 'function') {
+          const ensured = await workingDirectory.ensure(agent, signal)
+          if (typeof ensured === 'string' && ensured !== '') return ensured
+        }
+      } catch {
+        // fall through to the synchronous read
+      }
+      try {
+        const resolved = workingDirectory.get?.(sessionOf(agent))
+        if (typeof resolved === 'string' && resolved !== '') return resolved
+      } catch {
+        // fall through
+      }
     }
     return undefined
   }
@@ -595,13 +609,22 @@ export function apply(ctx) {
         truncated: trimmed.truncated,
         totalChars: trimmed.totalChars,
       })
-      let raw = await callModel({ ...prompt, maxTokens: 7_000 })
+      let raw
+      try {
+        raw = await callModel({ ...prompt, maxTokens: 16_000 })
+      } catch (error) {
+        if (!/输出上限/.test(describeError(error))) throw error
+        // A very large design document can exhaust the output budget while the
+        // model is still reasoning. Ask for a shorter, complete JSON instead.
+        const shorter = `${prompt.user}\n\n注意：请只列出最重要的 15 个决策点，并务必输出完整、合法的 JSON。`
+        raw = await callModel({ system: prompt.system, user: shorter, maxTokens: 12_000 })
+      }
       let parsed
       try {
         parsed = normalizeDecisionPayload(parseJsonPayload(raw), { sourcePath: workbench.source.path })
       } catch (error) {
         const repair = `${prompt.user}\n\n提醒：上一次输出无法解析为 JSON（${describeError(error)}）。这次只输出一个合法的 JSON 对象，不要输出任何其他文字。`
-        raw = await callModel({ system: prompt.system, user: repair, maxTokens: 7_000 })
+        raw = await callModel({ system: prompt.system, user: repair, maxTokens: 12_000 })
         parsed = normalizeDecisionPayload(parseJsonPayload(raw), { sourcePath: workbench.source.path })
       }
       workbench.title = parsed.title || workbench.title || ''
@@ -800,7 +823,7 @@ export function apply(ctx) {
       const sessionId = requireSessionId(url.searchParams.get('sessionId'))
       const query = url.searchParams.get('query') ?? ''
       const agent = agentOf(sessionId)
-      const root = workspaceOf(agent)
+      const root = await resolveWorkspace(agent)
       if (root === undefined) {
         throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再选择文件。')
       }
@@ -812,7 +835,7 @@ export function apply(ctx) {
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
       const agent = agentOf(sessionId)
-      const root = workspaceOf(agent)
+      const root = await resolveWorkspace(agent)
       if (root === undefined) {
         throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再开始。')
       }
@@ -957,7 +980,7 @@ export function apply(ctx) {
       const sessionId = requireSessionId(body.sessionId)
       const workbench = requireWorkbench(sessionId, body.workbenchId)
       const agent = agentOf(sessionId)
-      const root = workspaceOf(agent) ?? dirname(workbench.source.abs)
+      const root = (await resolveWorkspace(agent)) ?? dirname(workbench.source.abs)
       const targetDirectory = join(root, 'docs', 'decisions')
       if (!isPathInside(root, targetDirectory)) {
         throw new HttpError(400, 'outside-workspace', '决策记录目录不在当前工作区内。')
@@ -1006,7 +1029,7 @@ export function apply(ctx) {
     if (sessionId === undefined) {
       return { kind: 'error', text: '无法确定当前会话，请重试。' }
     }
-    const root = workspaceOf(invocation.agent)
+    const root = await resolveWorkspace(invocation.agent)
     if (root === undefined) {
       return { kind: 'error', text: '当前会话还没有工作区。先打开一个工作区，再运行 /decision。' }
     }
@@ -1034,8 +1057,11 @@ export function apply(ctx) {
   ctx.effect(() =>
     ctx.commands.register({
       name: COMMAND_NAME,
+      // No `input` descriptor on purpose: a descriptor turns the bare command
+      // into a leading-input claim, so `/decision` + Enter only opens an
+      // argument stage instead of executing. Without it, both `/decision` and
+      // `/decision <file>` execute immediately.
       description: '打开决策工作台：/decision 选择文件，/decision <文件名> 直接开始',
-      input: { hint: '[文件名]' },
       handler: handleDecisionCommand,
     }),
   )
