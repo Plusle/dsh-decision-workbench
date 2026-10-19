@@ -75,11 +75,8 @@ window.__ModuleLoader__.load({
       'detail.back': '返回清单',
       'detail.question': '要决定什么',
       'detail.source': '出处',
-      'detail.explaining': '正在读文档，整理这一题的背景…',
-      'detail.explainError': '解释加载失败：',
       'detail.whyNow': '为什么现在要决定',
       'detail.background': '背景',
-      'detail.scenarios': '可能的情况',
       'detail.if': '如果',
       'detail.then': '则',
       'detail.impact': '影响',
@@ -135,6 +132,41 @@ window.__ModuleLoader__.load({
       'notice.openFailed': '打开工作台失败：',
       'submitted.banner': '摘要已提交。主会话会按「已决定」继续；拿不准和未处理项不会被猜测。',
       'submitted.view': '查看摘要',
+      // 0.3.0: on-demand explanation / examples, source health, history, read-only.
+      'detail.explainSection': '讲解这一项',
+      'detail.explainHint': '打开这一项不会自动生成讲解：需要时再点，省 token。',
+      'detail.explainButton': '让助手讲解这一项',
+      'detail.explainRetry': '重新生成讲解',
+      'detail.explainLoading': '正在读文档，整理这一项的背景…',
+      'detail.explainFailed': '讲解生成失败：',
+      'detail.examplesSection': '实际例子',
+      'detail.examplesHint': '想知道“选 A 会怎样、一直不定会怎样”时再生成。',
+      'detail.examplesButton': '举 2–3 个具体例子',
+      'detail.examplesRetry': '重新生成例子',
+      'detail.examplesLoading': '正在结合文档写具体例子…',
+      'detail.examplesFailed': '例子生成失败：',
+      'detail.examplesFromExplain': '来自讲解',
+      'detail.mergedPrefix': '已合并相似决策 ',
+      'detail.mergedSuffix': ' 项',
+      'detail.sourceStale': '出处可能失效',
+      'workbench.stale': '来源文档已更新，部分出处可能需要复核。',
+      'workbench.resync': '重新同步',
+      'workbench.resyncing': '正在重新同步…',
+      'workbench.missing': '来源文档已不存在，无法继续读取。',
+      'workbench.resyncedOk': '已重新同步，出处都还在。',
+      'workbench.resyncedStalePrefix': '已重新同步，出处失效 ',
+      'workbench.resyncedStaleSuffix': ' 项，请复核。',
+      'history.title': '历史工作台',
+      'history.view': '查看',
+      'history.continue': '继续',
+      'history.current': '当前',
+      'readOnly.banner': '历史工作台（只读）。可以查看已有的讲解、例子和决定；要修改请点「继续这个工作台」。',
+      'readOnly.continue': '继续这个工作台',
+      'readOnly.explainHint': '只读模式：继续这个工作台后才能生成讲解。',
+      'readOnly.examplesHint': '只读模式：继续这个工作台后才能生成例子。',
+      'notice.activateFailed': '切换工作台失败：',
+      'notice.resyncFailed': '重新同步失败：',
+      'notice.examplesFailed': '例子生成失败：',
     }
 
     const en = {
@@ -177,11 +209,8 @@ window.__ModuleLoader__.load({
       'detail.back': 'Back to list',
       'detail.question': 'What to decide',
       'detail.source': 'Source',
-      'detail.explaining': 'Reading the document and preparing the background…',
-      'detail.explainError': 'Explanation failed: ',
       'detail.whyNow': 'Why now',
       'detail.background': 'Background',
-      'detail.scenarios': 'Scenarios',
       'detail.if': 'If',
       'detail.then': 'then',
       'detail.impact': 'Impact',
@@ -237,6 +266,41 @@ window.__ModuleLoader__.load({
       'notice.openFailed': 'Opening the workbench failed: ',
       'submitted.banner': 'Summary submitted. The main session follows the decided items; unsure and untouched items are never guessed.',
       'submitted.view': 'View summary',
+      // 0.3.0: on-demand explanation / examples, source health, history, read-only.
+      'detail.explainSection': 'Explanation',
+      'detail.explainHint': 'Opening an item does not generate anything. Ask when you need it and save tokens.',
+      'detail.explainButton': 'Explain this decision',
+      'detail.explainRetry': 'Regenerate explanation',
+      'detail.explainLoading': 'Reading the document and preparing the background…',
+      'detail.explainFailed': 'Explanation failed: ',
+      'detail.examplesSection': 'Concrete examples',
+      'detail.examplesHint': 'Generate these only when you want to see what picking A, or waiting, actually does.',
+      'detail.examplesButton': 'Give me 2–3 concrete examples',
+      'detail.examplesRetry': 'Regenerate examples',
+      'detail.examplesLoading': 'Drafting concrete examples from the document…',
+      'detail.examplesFailed': 'Examples failed: ',
+      'detail.examplesFromExplain': 'From the explanation',
+      'detail.mergedPrefix': 'Merged ',
+      'detail.mergedSuffix': ' similar decisions',
+      'detail.sourceStale': 'Citation may be stale',
+      'workbench.stale': 'The source document changed; some citations may need a second look.',
+      'workbench.resync': 'Resync',
+      'workbench.resyncing': 'Resyncing…',
+      'workbench.missing': 'The source document no longer exists.',
+      'workbench.resyncedOk': 'Resynced; every citation is still findable.',
+      'workbench.resyncedStalePrefix': 'Resynced; ',
+      'workbench.resyncedStaleSuffix': ' citation(s) went stale, please review.',
+      'history.title': 'Previous workbenches',
+      'history.view': 'View',
+      'history.continue': 'Continue',
+      'history.current': 'Current',
+      'readOnly.banner': 'Previous workbench (read-only). Existing explanations, examples and decisions are visible; press “Continue this workbench” to edit.',
+      'readOnly.continue': 'Continue this workbench',
+      'readOnly.explainHint': 'Read-only: continue this workbench to generate an explanation.',
+      'readOnly.examplesHint': 'Read-only: continue this workbench to generate examples.',
+      'notice.activateFailed': 'Switching workbench failed: ',
+      'notice.resyncFailed': 'Resync failed: ',
+      'notice.examplesFailed': 'Examples failed: ',
     }
 
     // --- tokens ---------------------------------------------------------------
@@ -545,6 +609,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState('')
       const [busy, setBusy] = React.useState('')
       const [resume, setResume] = React.useState(null)
+      const [history, setHistory] = React.useState(null)
       const [reloadKey, setReloadKey] = React.useState(0)
       const t = props.t
 
@@ -583,6 +648,22 @@ window.__ModuleLoader__.load({
           cancelled = true
         }
       }, [props.sessionId])
+
+      // History is scoped server-side to this session AND this workspace; the
+      // picker only ever renders what the host already decided it may see.
+      React.useEffect(() => {
+        let cancelled = false
+        fetchJson(`/workbenches?sessionId=${encodeURIComponent(props.sessionId)}`)
+          .then((data) => {
+            if (!cancelled) setHistory(Array.isArray(data.workbenches) ? data.workbenches : [])
+          })
+          .catch(() => {
+            if (!cancelled) setHistory([])
+          })
+        return () => {
+          cancelled = true
+        }
+      }, [props.sessionId, reloadKey])
 
       const choose = async (path) => {
         if (busy !== '') return
@@ -634,6 +715,68 @@ window.__ModuleLoader__.load({
                   'div',
                   { style: { display: 'flex', gap: 8, marginTop: 2 } },
                   h('button', { type: 'button', style: buttonStyle(true, true), onClick: () => props.onStarted(resume) }, t('picker.resumeContinue')),
+                ),
+              )
+            : null,
+          history !== null && history.length > 0
+            ? h(
+                'div',
+                { style: { ...card, display: 'flex', flexDirection: 'column', gap: 6 } },
+                h(
+                  'div',
+                  { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  h('span', { style: { fontSize: 12, fontWeight: 600 } }, t('history.title')),
+                  h('span', { style: { color: T.secondary, fontSize: 11 } }, String(history.length)),
+                ),
+                history.slice(0, 5).map((entry) =>
+                  h(
+                    'div',
+                    {
+                      key: entry.id,
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingTop: 5,
+                        borderTop: `1px solid ${T.border}`,
+                      },
+                    },
+                    h(
+                      'div',
+                      { style: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 } },
+                      h(
+                        'span',
+                        {
+                          title: entry.source.path,
+                          style: { fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                        },
+                        entry.source.path,
+                      ),
+                      h(
+                        'span',
+                        { style: { fontSize: 11, color: T.secondary } },
+                        `${t('picker.resumeDecided')} ${entry.stats.decided}/${entry.stats.total}${entry.active ? ` · ${t('history.current')}` : ''}`,
+                      ),
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        style: buttonStyle(false, true),
+                        onClick: () => props.onOpenHistory(entry.id, true),
+                      },
+                      t('history.view'),
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        style: buttonStyle(true, true),
+                        onClick: () => props.onOpenHistory(entry.id, false),
+                      },
+                      t('history.continue'),
+                    ),
+                  ),
                 ),
               )
             : null,
@@ -773,6 +916,8 @@ window.__ModuleLoader__.load({
         'button',
         {
           type: 'button',
+          role: 'option',
+          'aria-selected': selected ? 'true' : 'false',
           onClick: () => props.onSelect(item),
           'aria-current': selected ? 'true' : undefined,
           style: {
@@ -810,6 +955,10 @@ window.__ModuleLoader__.load({
             item.status !== 'unseen'
               ? h('span', { style: { color: item.status === 'decided' ? T.success : item.status === 'unsure' ? T.warn : T.secondary } }, t(`status.${item.status}`))
               : null,
+            Array.isArray(item.mergedFrom) && item.mergedFrom.length > 0
+              ? h(Chip, { color: T.secondary }, `${t('detail.mergedPrefix')}${item.mergedFrom.length}${t('detail.mergedSuffix')}`)
+              : null,
+            item.sourceStale === true ? h(Chip, { color: T.warn }, t('detail.sourceStale')) : null,
           ),
         ),
         h('span', { 'aria-hidden': true, style: { color: T.idle, fontSize: 15, lineHeight: '18px', flex: '0 0 auto' } }, '›'),
@@ -819,23 +968,18 @@ window.__ModuleLoader__.load({
     function DecisionList(props) {
       const workbench = props.workbench
       const t = props.t
-      const [filter, setFilter] = React.useState('all')
-      const stats = countItems(workbench.items)
+      const items = Array.isArray(props.items) ? props.items : workbench.items
+      const stats = props.stats || countItems(workbench.items)
+      const filter = props.filter || 'all'
       const filters = [
         { key: 'all', label: t('filter.all'), count: stats.total },
         { key: 'blocking', label: t('priority.blocking'), count: workbench.items.filter((item) => item.priority === 'blocking').length },
         { key: 'open', label: t('filter.open'), count: stats.unseen + stats.unsure + stats.deferred },
         { key: 'decided', label: t('status.decided'), count: stats.decided },
       ]
-      const visible = workbench.items.filter((item) => {
-        if (filter === 'blocking') return item.priority === 'blocking'
-        if (filter === 'open') return item.status !== 'decided'
-        if (filter === 'decided') return item.status === 'decided'
-        return true
-      })
 
       const groups = priorityOrder
-        .map((priority) => ({ priority, items: visible.filter((item) => item.priority === priority) }))
+        .map((priority) => ({ priority, items: items.filter((item) => item.priority === priority) }))
         .filter((group) => group.items.length > 0)
 
       return h(
@@ -850,7 +994,8 @@ window.__ModuleLoader__.load({
               {
                 key: entry.key,
                 type: 'button',
-                onClick: () => setFilter(entry.key),
+                'aria-pressed': filter === entry.key ? 'true' : 'false',
+                onClick: () => props.onFilter(entry.key),
                 style: {
                   ...buttonStyle(false, true),
                   borderColor: filter === entry.key ? T.brand : T.border,
@@ -863,24 +1008,28 @@ window.__ModuleLoader__.load({
         ),
         groups.length === 0
           ? h('div', { style: { color: T.secondary, padding: '10px 6px' } }, t('workbench.empty'))
-          : groups.map((group) =>
-              h(
-                'div',
-                { key: group.priority, style: { marginBottom: 8 } },
+          : h(
+              'div',
+              { role: 'listbox', 'aria-label': t('list.title'), style: { display: 'flex', flexDirection: 'column' } },
+              groups.map((group) =>
                 h(
                   'div',
-                  { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 2px' } },
-                  h('span', { style: { ...sectionTitle, fontSize: 11 } }, t(`priority.${group.priority}`)),
-                  h('span', { style: { color: T.secondary, fontSize: 11 } }, String(group.items.length)),
-                ),
-                group.items.map((item) =>
-                  h(DecisionRow, {
-                    key: item.id,
-                    item,
-                    t,
-                    selected: props.selectedId === item.id,
-                    onSelect: props.onSelect,
-                  }),
+                  { key: group.priority, role: 'group', 'aria-label': t(`priority.${group.priority}`), style: { marginBottom: 8 } },
+                  h(
+                    'div',
+                    { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 2px' } },
+                    h('span', { style: { ...sectionTitle, fontSize: 11 } }, t(`priority.${group.priority}`)),
+                    h('span', { style: { color: T.secondary, fontSize: 11 } }, String(group.items.length)),
+                  ),
+                  group.items.map((item) =>
+                    h(DecisionRow, {
+                      key: item.id,
+                      item,
+                      t,
+                      selected: props.selectedId === item.id,
+                      onSelect: props.onSelect,
+                    }),
+                  ),
                 ),
               ),
             ),
@@ -895,21 +1044,39 @@ window.__ModuleLoader__.load({
       const explanation = item.explanation
 
       if (item.explanationState === 'loading') {
-        return h('div', { style: card }, h(LoadingLine, { text: t('detail.explaining') }))
+        return h('div', { style: card }, h(LoadingLine, { text: t('detail.explainLoading') }))
       }
       if (item.explanationState === 'error') {
         return h(
           'div',
           { style: { ...card, borderColor: T.error } },
-          h('div', { style: { color: T.error } }, `${t('detail.explainError')}${item.explanationError || ''}`),
-          h(
-            'button',
-            { type: 'button', style: { ...buttonStyle(false, true), marginTop: 8 }, onClick: props.onRetry },
-            t('workbench.retry'),
-          ),
+          h('div', { style: { color: T.error } }, `${t('detail.explainFailed')}${item.explanationError || ''}`),
+          props.editable !== false
+            ? h(
+                'button',
+                { type: 'button', style: { ...buttonStyle(false, true), marginTop: 8 }, onClick: props.onRetry },
+                t('detail.explainRetry'),
+              )
+            : null,
         )
       }
-      if (!explanation) return null
+      if (!explanation) {
+        // Nothing is requested when the item is opened: this card is the only
+        // path to an explanation, and it costs one model call when pressed.
+        return h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: 7 } },
+          h('div', { style: sectionTitle }, t('detail.explainSection')),
+          h('div', { style: { color: T.secondary, fontSize: 12, lineHeight: 1.55 } }, props.editable !== false ? t('detail.explainHint') : t('readOnly.explainHint')),
+          props.editable !== false
+            ? h(
+                'div',
+                null,
+                h('button', { type: 'button', style: buttonStyle(false), onClick: props.onExplain }, t('detail.explainButton')),
+              )
+            : null,
+        )
+      }
 
       return h(
         'div',
@@ -927,23 +1094,6 @@ window.__ModuleLoader__.load({
             ? h('div', null, h('div', { style: sectionTitle }, t('detail.background')), h('div', { style: { color: T.primary } }, explanation.background))
             : null,
         ),
-        explanation.scenarios.length > 0
-          ? h(
-              'div',
-              { style: card },
-              h('div', { style: { ...sectionTitle, marginBottom: 6 } }, t('detail.scenarios')),
-              explanation.scenarios.map((scenario, index) =>
-                h(
-                  'div',
-                  { key: index, style: { display: 'flex', gap: 6, padding: '3px 0', borderTop: index === 0 ? 'none' : `1px solid ${T.border}` } },
-                  h('span', { style: { color: T.secondary, flex: '0 0 auto' } }, t('detail.if')),
-                  h('span', { style: { flex: '1 1 60%', minWidth: 0 } }, scenario.if || '—'),
-                  h('span', { style: { color: T.secondary, flex: '0 0 auto' } }, t('detail.then')),
-                  h('span', { style: { flex: '1 1 60%', minWidth: 0 } }, scenario.then || '—'),
-                ),
-              ),
-            )
-          : null,
         explanation.impact
           ? h('div', { style: card }, h('div', { style: sectionTitle }, t('detail.impact')), h('div', null, explanation.impact))
           : null,
@@ -974,6 +1124,91 @@ window.__ModuleLoader__.load({
               ),
             )
           : null,
+      )
+    }
+
+    /**
+     * Concrete examples are a separate, on-demand request. When an older
+     * explanation happens to carry scenarios, they are shown here as a
+     * read-only fallback instead of being regenerated.
+     */
+    function ExamplesView(props) {
+      const item = props.item
+      const t = props.t
+      const own = Array.isArray(item.examples) ? item.examples : []
+      const fallback = !item.explanation || !Array.isArray(item.explanation.scenarios) ? [] : item.explanation.scenarios
+      const examples = own.length > 0 ? own : fallback
+      const fromExplain = own.length === 0 && fallback.length > 0
+      const state = item.examplesState || 'idle'
+
+      if (state === 'loading') {
+        return h('div', { style: card }, h(LoadingLine, { text: t('detail.examplesLoading') }))
+      }
+      if (state === 'error') {
+        return h(
+          'div',
+          { style: { ...card, borderColor: T.error } },
+          h('div', { style: { color: T.error } }, `${t('detail.examplesFailed')}${item.examplesError || ''}`),
+          props.editable !== false
+            ? h(
+                'button',
+                { type: 'button', style: { ...buttonStyle(false, true), marginTop: 8 }, onClick: props.onRetry },
+                t('detail.examplesRetry'),
+              )
+            : null,
+        )
+      }
+      if (examples.length === 0) {
+        return h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: 7 } },
+          h('div', { style: sectionTitle }, t('detail.examplesSection')),
+          h('div', { style: { color: T.secondary, fontSize: 12, lineHeight: 1.55 } }, props.editable !== false ? t('detail.examplesHint') : t('readOnly.examplesHint')),
+          props.editable !== false
+            ? h(
+                'div',
+                null,
+                h('button', { type: 'button', style: buttonStyle(false), onClick: props.onExamples }, t('detail.examplesButton')),
+              )
+            : null,
+        )
+      }
+
+      return h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: sectionTitle }, t('detail.examplesSection')),
+          fromExplain ? h(Chip, { color: T.secondary }, t('detail.examplesFromExplain')) : null,
+          props.editable !== false
+            ? h(
+                'button',
+                { type: 'button', style: { ...linkStyle, marginLeft: 'auto' }, onClick: props.onRetry },
+                t('detail.examplesRetry'),
+              )
+            : null,
+        ),
+        h(
+          'div',
+          { style: card },
+          h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            examples.map((example, index) =>
+              h(
+                'div',
+                { key: index, style: { display: 'flex', gap: 6, paddingTop: index === 0 ? 0 : 6, borderTop: index === 0 ? 'none' : `1px solid ${T.border}` } },
+                h('span', { style: { color: T.secondary, flex: '0 0 auto' } }, t('detail.if')),
+                h('span', { style: { flex: '1 1 60%', minWidth: 0 } }, example.if || '—'),
+                h('span', { style: { color: T.secondary, flex: '0 0 auto' } }, t('detail.then')),
+                h('span', { style: { flex: '1 1 60%', minWidth: 0 } }, example.then || '—'),
+              ),
+            ),
+          ),
+        ),
+        item.examplesNote ? h('div', { style: { fontSize: 12, color: T.secondary, lineHeight: 1.55 } }, item.examplesNote) : null,
       )
     }
 
@@ -1048,26 +1283,30 @@ window.__ModuleLoader__.load({
             'div',
             { style: { ...card, borderColor: T.error } },
             h('div', { style: { color: T.error } }, `${t('detail.optionsError')}${item.optionsError || ''}`),
-            h(
-              'button',
-              { type: 'button', style: { ...buttonStyle(false, true), marginTop: 8 }, onClick: props.onGenerate },
-              t('workbench.retry'),
-            ),
+            props.editable !== false
+              ? h(
+                  'button',
+                  { type: 'button', style: { ...buttonStyle(false, true), marginTop: 8 }, onClick: props.onGenerate },
+                  t('workbench.retry'),
+                )
+              : null,
           )
         }
         return h(
           'div',
           { style: { ...card, display: 'flex', flexDirection: 'column', gap: 8 } },
           h('div', { style: { color: T.secondary } }, t('detail.noOptions')),
-          h(
-            'div',
-            null,
-            h(
-              'button',
-              { type: 'button', style: buttonStyle(false), onClick: props.onGenerate },
-              t('detail.generateOptions'),
-            ),
-          ),
+          props.editable !== false
+            ? h(
+                'div',
+                null,
+                h(
+                  'button',
+                  { type: 'button', style: buttonStyle(false), onClick: props.onGenerate },
+                  t('detail.generateOptions'),
+                ),
+              )
+            : null,
         )
       }
 
@@ -1101,6 +1340,7 @@ window.__ModuleLoader__.load({
     function ThreadPanel(props) {
       const t = props.t
       const thread = props.thread || []
+      const readOnly = props.readOnly === true
       const [draft, setDraft] = React.useState('')
       const [sending, setSending] = React.useState(false)
       const listRef = React.useRef(null)
@@ -1164,7 +1404,7 @@ window.__ModuleLoader__.load({
               ),
             )
           : null,
-        thread.length === 0
+        thread.length === 0 && !readOnly
           ? h(
               'div',
               { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } },
@@ -1177,9 +1417,11 @@ window.__ModuleLoader__.load({
               ),
             )
           : null,
-        h(
-          'div',
-          { style: { display: 'flex', gap: 6, alignItems: 'flex-end' } },
+        readOnly
+          ? null
+          : h(
+              'div',
+              { style: { display: 'flex', gap: 6, alignItems: 'flex-end' } },
           h('textarea', {
             rows: 2,
             value: draft,
@@ -1392,6 +1634,9 @@ window.__ModuleLoader__.load({
       const [workbench, setWorkbench] = React.useState(props.initialWorkbench || null)
       const [error, setError] = React.useState('')
       const [selectedId, setSelectedId] = React.useState(null)
+      const [filter, setFilter] = React.useState('all')
+      const [activeId, setActiveId] = React.useState('')
+      const [activated, setActivated] = React.useState(false)
       const [notice, setNotice] = React.useState(null)
       const [digest, setDigest] = React.useState(null)
       const [busy, setBusy] = React.useState('')
@@ -1412,12 +1657,28 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect()
       }, [workbench === null])
 
+      const query = React.useCallback(() => {
+        const base = `/workbench?sessionId=${encodeURIComponent(sessionId)}`
+        // A fixed id pins the tab to the workbench the user opened, including a
+        // read-only history entry; without one the host answers with the
+        // workbench active in this session+workspace.
+        return workbenchId ? `${base}&workbenchId=${encodeURIComponent(workbenchId)}` : base
+      }, [sessionId, workbenchId])
+
       const applyRemote = React.useCallback(
         (next) => {
           if (!next || typeof next !== 'object') return
           setError('')
           setWorkbench((previous) => {
-            if (previous && previous.id === next.id && previous.revision === next.revision) return previous
+            if (previous && previous.id === next.id && previous.revision === next.revision) {
+              // Polling carries cheap source-health flags (stale/missing) that
+              // must land even when the revision is unchanged; everything else
+              // is identical, so avoid a needless re-render.
+              const before = previous.source || {}
+              const after = next.source || {}
+              if (before.stale === after.stale && before.missing === after.missing) return previous
+              return { ...previous, source: after }
+            }
             if (workbenchId && next.id !== workbenchId) return previous
             return next
           })
@@ -1427,12 +1688,13 @@ window.__ModuleLoader__.load({
 
       const refresh = React.useCallback(async () => {
         try {
-          const data = await fetchJson(`/workbench?sessionId=${encodeURIComponent(sessionId)}`)
+          const data = await fetchJson(query())
+          if (typeof data.activeId === 'string') setActiveId(data.activeId)
           applyRemote(data.workbench)
         } catch {
           // polling is best effort
         }
-      }, [sessionId, applyRemote])
+      }, [query, applyRemote])
 
       React.useEffect(() => {
         if (props.active === false) return undefined
@@ -1453,9 +1715,10 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (workbench !== null) return undefined
         let cancelled = false
-        fetchJson(`/workbench?sessionId=${encodeURIComponent(sessionId)}`)
+        fetchJson(query())
           .then((data) => {
             if (cancelled) return
+            if (typeof data.activeId === 'string') setActiveId(data.activeId)
             if (data.workbench) applyRemote(data.workbench)
             else setError(t('workbench.error'))
           })
@@ -1465,7 +1728,7 @@ window.__ModuleLoader__.load({
         return () => {
           cancelled = true
         }
-      }, [sessionId, workbench, applyRemote, t])
+      }, [query, workbench, applyRemote, t])
 
       React.useEffect(() => {
         if (!notice) return undefined
@@ -1518,12 +1781,119 @@ window.__ModuleLoader__.load({
         postJson('/item', { sessionId, workbenchId: workbench.id, itemId: first.id }).catch(() => {})
       }, [workbench, selectedId, width, sessionId])
 
-      // Lazy explanation: opening an item starts one host-side generation.
-      React.useEffect(() => {
-        if (!selectedItem || !workbench) return
-        if (selectedItem.explanationState !== 'idle') return
-        postJson('/explain', { sessionId, workbenchId: workbench.id, itemId: selectedItem.id }).catch(() => {})
-      }, [selectedItem && selectedItem.id, sessionId, workbench && workbench.id])
+      // Nothing is generated when an item opens. Explanation and examples are
+      // explicit requests, so scrolling through the list costs zero tokens.
+      const editable = !props.readOnly || activated || (workbench !== null && activeId !== '' && activeId === workbench.id)
+
+      const visibleItems = React.useMemo(() => {
+        if (!workbench) return []
+        return workbench.items.filter((item) => {
+          if (filter === 'blocking') return item.priority === 'blocking'
+          if (filter === 'open') return item.status !== 'decided'
+          if (filter === 'decided') return item.status === 'decided'
+          return true
+        })
+      }, [workbench, filter])
+
+      const orderedIds = React.useMemo(
+        () => priorityOrder.flatMap((priority) => visibleItems.filter((item) => item.priority === priority).map((item) => item.id)),
+        [visibleItems],
+      )
+
+      const moveSelection = React.useCallback(
+        (step) => {
+          if (!workbench || orderedIds.length === 0) return
+          const index = selectedId === null ? -1 : orderedIds.indexOf(selectedId)
+          const nextIndex =
+            index < 0 ? (step > 0 ? 0 : orderedIds.length - 1) : Math.max(0, Math.min(orderedIds.length - 1, index + step))
+          const nextId = orderedIds[nextIndex]
+          if (!nextId || nextId === selectedId) return
+          const item = workbench.items.find((entry) => entry.id === nextId)
+          if (!item) return
+          setSelectedId(item.id)
+          postJson('/item', { sessionId, workbenchId: workbench.id, itemId: item.id }).catch(() => {})
+        },
+        [workbench, orderedIds, selectedId, sessionId],
+      )
+
+      const onKeyDown = (event) => {
+        const target = event.target
+        const tag = target && typeof target.tagName === 'string' ? target.tagName : ''
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (target && target.isContentEditable === true)) return
+        if (event.key === 'Escape') {
+          if (digest) {
+            setDigest(null)
+            event.preventDefault()
+          } else if (selectedId !== null) {
+            setSelectedId(null)
+            event.preventDefault()
+          }
+          return
+        }
+        if (event.key === 'j' || event.key === 'J' || event.key === 'ArrowDown') {
+          moveSelection(1)
+          event.preventDefault()
+        } else if (event.key === 'k' || event.key === 'K' || event.key === 'ArrowUp') {
+          moveSelection(-1)
+          event.preventDefault()
+        }
+      }
+
+      const requestExplain = async (force) => {
+        if (!selectedItem) return
+        try {
+          const data = await post('/explain', { itemId: selectedItem.id, force: force === true })
+          if (data && data.item) patchItem(data.item)
+        } catch (failure) {
+          report(failure, 'notice.explainFailed')
+        }
+      }
+
+      const requestExamples = async (force) => {
+        if (!selectedItem) return
+        try {
+          const data = await post('/examples', { itemId: selectedItem.id, force: force === true })
+          if (data && data.item) patchItem(data.item)
+        } catch (failure) {
+          report(failure, 'notice.examplesFailed')
+        }
+      }
+
+      const resync = async () => {
+        if (!workbench) return
+        setBusy('resync')
+        try {
+          const data = await postJson('/resync', { sessionId, workbenchId: workbench.id })
+          if (data.workbench) setWorkbench(data.workbench)
+          const stale = Array.isArray(data.staleItems) ? data.staleItems.length : 0
+          setNotice({
+            kind: stale > 0 ? 'error' : 'success',
+            text:
+              stale > 0
+                ? `${t('workbench.resyncedStalePrefix')}${stale}${t('workbench.resyncedStaleSuffix')}`
+                : t('workbench.resyncedOk'),
+          })
+        } catch (failure) {
+          report(failure, 'notice.resyncFailed')
+        } finally {
+          setBusy('')
+        }
+      }
+
+      const continueEditing = async () => {
+        if (!workbench) return
+        setBusy('activate')
+        try {
+          const data = await postJson('/activate', { sessionId, workbenchId: workbench.id })
+          if (data.workbench) setWorkbench(data.workbench)
+          if (typeof data.workbench?.id === 'string') setActiveId(data.workbench.id)
+          setActivated(true)
+        } catch (failure) {
+          report(failure, 'notice.activateFailed')
+        } finally {
+          setBusy('')
+        }
+      }
 
       const decide = async (status, itemOverride) => {
         const item = itemOverride || selectedItem
@@ -1581,16 +1951,6 @@ window.__ModuleLoader__.load({
           if (data && data.item) patchItem(data.item)
         } catch (failure) {
           report(failure, 'notice.askFailed')
-        }
-      }
-
-      const retryExplain = async () => {
-        if (!selectedItem) return
-        try {
-          const data = await post('/explain', { itemId: selectedItem.id, force: true })
-          if (data && data.item) patchItem(data.item)
-        } catch (failure) {
-          report(failure, 'notice.explainFailed')
         }
       }
 
@@ -1708,6 +2068,56 @@ window.__ModuleLoader__.load({
               h('span', { style: { flex: 1 } }, t('submitted.banner')),
             )
           : null,
+        props.readOnly && !editable
+          ? h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  border: `1px solid ${T.borderStrong}`,
+                  color: T.secondary,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                },
+              },
+              h('span', { style: { flex: 1 } }, t('readOnly.banner')),
+              h(
+                'button',
+                { type: 'button', style: buttonStyle(true, true), onClick: continueEditing, disabled: busy !== '' },
+                t('readOnly.continue'),
+              ),
+            )
+          : null,
+        workbench.source.missing === true || workbench.source.stale === true
+          ? h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  border: `1px solid ${T.warn}`,
+                  color: T.warn,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                },
+              },
+              h('span', { style: { flex: 1 } }, workbench.source.missing === true ? t('workbench.missing') : t('workbench.stale')),
+              workbench.source.missing === true || !editable
+                ? null
+                : h(
+                    'button',
+                    { type: 'button', style: buttonStyle(false, true), onClick: resync, disabled: busy !== '' },
+                    busy === 'resync' ? t('workbench.resyncing') : t('workbench.resync'),
+                  ),
+            )
+          : null,
         h(Progress, { stats, t }),
       )
 
@@ -1782,6 +2192,10 @@ window.__ModuleLoader__.load({
               h(PriorityChip, { priority: selectedItem.priority, t }),
               h(StatusMark, { status: selectedItem.status }),
               h('span', { style: { fontSize: 12, color: T.secondary } }, t(`status.${selectedItem.status}`)),
+              Array.isArray(selectedItem.mergedFrom) && selectedItem.mergedFrom.length > 0
+                ? h(Chip, { color: T.secondary }, `${t('detail.mergedPrefix')}${selectedItem.mergedFrom.length}${t('detail.mergedSuffix')}`)
+                : null,
+              selectedItem.sourceStale === true ? h(Chip, { color: T.warn }, t('detail.sourceStale')) : null,
             ),
             h('div', { style: { fontSize: 16, fontWeight: 600, lineHeight: 1.4, wordBreak: 'break-word' } }, selectedItem.title),
           ),
@@ -1804,7 +2218,20 @@ window.__ModuleLoader__.load({
                 selectedItem.source.quote ? h('div', { style: { marginTop: 3, color: T.primary, fontStyle: 'italic' } }, `“${selectedItem.source.quote}”`) : null,
               )
             : null,
-          h(ExplanationView, { item: selectedItem, t, onRetry: retryExplain }),
+          h(ExplanationView, {
+            item: selectedItem,
+            t,
+            editable,
+            onExplain: () => requestExplain(false),
+            onRetry: () => requestExplain(true),
+          }),
+          h(ExamplesView, {
+            item: selectedItem,
+            t,
+            editable,
+            onExamples: () => requestExamples(false),
+            onRetry: () => requestExamples(true),
+          }),
           h(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
@@ -1817,9 +2244,10 @@ window.__ModuleLoader__.load({
             h(OptionsView, {
               item: selectedItem,
               t,
+              editable,
               selected: decisionDraft.optionIds,
               recommendation: selectedItem.recommendation,
-              onToggle: toggleOption,
+              onToggle: editable ? toggleOption : () => {},
               onGenerate: generateOptions,
             }),
           ),
@@ -1827,51 +2255,60 @@ window.__ModuleLoader__.load({
             'div',
             { style: { ...card, display: 'flex', flexDirection: 'column', gap: 6 } },
             h('div', { style: sectionTitle }, t('detail.custom')),
-            h('textarea', {
-              rows: 2,
-              value: decisionDraft.custom,
-              placeholder: t('detail.customPlaceholder'),
-              style: { ...inputStyle, resize: 'vertical', lineHeight: 1.5 },
-              onChange: (event) => setDecisionDraft((previous) => ({ ...previous, custom: event.target.value })),
-            }),
+            editable
+              ? h('textarea', {
+                  rows: 2,
+                  value: decisionDraft.custom,
+                  placeholder: t('detail.customPlaceholder'),
+                  style: { ...inputStyle, resize: 'vertical', lineHeight: 1.5 },
+                  onChange: (event) => setDecisionDraft((previous) => ({ ...previous, custom: event.target.value })),
+                })
+              : h('div', { style: { whiteSpace: 'pre-wrap' } }, (selectedItem.decision && selectedItem.decision.custom) || '—'),
           ),
           h(
             'div',
             { style: { ...card, display: 'flex', flexDirection: 'column', gap: 6 } },
             h('div', { style: sectionTitle }, t('detail.rationale')),
-            h('textarea', {
-              rows: 2,
-              value: decisionDraft.rationale,
-              placeholder: t('detail.rationalePlaceholder'),
-              style: { ...inputStyle, resize: 'vertical', lineHeight: 1.5 },
-              onChange: (event) => setDecisionDraft((previous) => ({ ...previous, rationale: event.target.value })),
-            }),
+            editable
+              ? h('textarea', {
+                  rows: 2,
+                  value: decisionDraft.rationale,
+                  placeholder: t('detail.rationalePlaceholder'),
+                  style: { ...inputStyle, resize: 'vertical', lineHeight: 1.5 },
+                  onChange: (event) => setDecisionDraft((previous) => ({ ...previous, rationale: event.target.value })),
+                })
+              : h('div', { style: { whiteSpace: 'pre-wrap' } }, (selectedItem.decision && selectedItem.decision.rationale) || '—'),
           ),
-          h(
-            'div',
-            { style: { display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' } },
-            h(
-              'button',
-              {
-                type: 'button',
-                style: buttonStyle(true),
-                disabled: busy !== '' || (decisionDraft.optionIds.length === 0 && decisionDraft.custom.trim() === ''),
-                onClick: () => decide('decided'),
-              },
-              t('detail.decide'),
-            ),
-            h('button', { type: 'button', style: buttonStyle(false), disabled: busy !== '', onClick: () => decide('unsure') }, t('detail.unsure')),
-            h('button', { type: 'button', style: buttonStyle(false), disabled: busy !== '', onClick: () => decide('deferred') }, t('detail.deferred')),
-            selectedItem.status !== 'unseen'
-              ? h('button', { type: 'button', style: linkStyle, disabled: busy !== '', onClick: () => decide('unseen') }, t('detail.clear'))
+          editable
+            ? h(
+                'div',
+                { style: { display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' } },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    style: buttonStyle(true),
+                    disabled: busy !== '' || (decisionDraft.optionIds.length === 0 && decisionDraft.custom.trim() === ''),
+                    onClick: () => decide('decided'),
+                  },
+                  t('detail.decide'),
+                ),
+                h('button', { type: 'button', style: buttonStyle(false), disabled: busy !== '', onClick: () => decide('unsure') }, t('detail.unsure')),
+                h('button', { type: 'button', style: buttonStyle(false), disabled: busy !== '', onClick: () => decide('deferred') }, t('detail.deferred')),
+                selectedItem.status !== 'unseen'
+                  ? h('button', { type: 'button', style: linkStyle, disabled: busy !== '', onClick: () => decide('unseen') }, t('detail.clear'))
+                  : null,
+                selectedItem.status === 'decided' && decisionText(selectedItem) !== ''
+                  ? h('span', { style: { color: T.success, fontSize: 12 } }, `${t('detail.saved')}：${decisionText(selectedItem)}`)
+                  : null,
+              )
+            : selectedItem.status === 'decided' && decisionText(selectedItem) !== ''
+              ? h('div', { style: { color: T.success, fontSize: 12 } }, `${t('detail.saved')}：${decisionText(selectedItem)}`)
               : null,
-            selectedItem.status === 'decided' && decisionText(selectedItem) !== ''
-              ? h('span', { style: { color: T.success, fontSize: 12 } }, `${t('detail.saved')}：${decisionText(selectedItem)}`)
-              : null,
-          ),
           h(ThreadPanel, {
             key: selectedItem.id,
             t,
+            readOnly: !editable,
             thread: selectedItem.thread,
             threadState: selectedItem.threadState,
             onAsk: ask,
@@ -1901,7 +2338,16 @@ window.__ModuleLoader__.load({
                 { style: { padding: '8px 10px 0', fontSize: 12, fontWeight: 600, color: T.secondary } },
                 t('list.title'),
               ),
-              h(DecisionList, { workbench, t, selectedId, onSelect: openItem }),
+              h(DecisionList, {
+                workbench,
+                t,
+                items: visibleItems,
+                stats,
+                filter,
+                onFilter: setFilter,
+                selectedId,
+                onSelect: openItem,
+              }),
             ),
             h(
               'div',
@@ -1914,7 +2360,16 @@ window.__ModuleLoader__.load({
         } else if (detail !== null) {
           body = detail
         } else {
-          body = h(DecisionList, { workbench, t, selectedId, onSelect: openItem })
+          body = h(DecisionList, {
+            workbench,
+            t,
+            items: visibleItems,
+            stats,
+            filter,
+            onFilter: setFilter,
+            selectedId,
+            onSelect: openItem,
+          })
         }
       }
 
@@ -1934,11 +2389,13 @@ window.__ModuleLoader__.load({
                 },
               },
               h('div', { style: { flex: 1, minWidth: 0, fontSize: 11, color: T.secondary } }, `${t('workbench.progress')} ${stats.decided}/${stats.total}`),
-              h(
-                'button',
-                { type: 'button', style: buttonStyle(true, true), onClick: openDigest, disabled: busy !== '' },
-                t('digest.submit'),
-              ),
+              editable
+                ? h(
+                    'button',
+                    { type: 'button', style: buttonStyle(true, true), onClick: openDigest, disabled: busy !== '' },
+                    t('digest.submit'),
+                  )
+                : null,
             )
           : null
 
@@ -1948,7 +2405,7 @@ window.__ModuleLoader__.load({
         h('style', { key: 'dsw-dw-keyframes' }, KEYFRAMES),
         h(
           'div',
-          { ref: rootRef, style: surface },
+          { ref: rootRef, style: surface, tabIndex: -1, onKeyDown, 'aria-label': t('tab.title') },
           header,
           notice !== null
             ? h(
@@ -1990,27 +2447,49 @@ window.__ModuleLoader__.load({
 
     // --- tab body -------------------------------------------------------------
 
+    // A language switch bumps the locale revision. Bound `t` already reads the
+    // active locale at call time, but nothing would re-render the tree, so this
+    // hook subscribes and forces one render pass.
+    function useLocaleTick(locale) {
+      const [, setRevision] = React.useState(0)
+      React.useEffect(() => {
+        if (!locale || typeof locale.subscribe !== 'function') return undefined
+        return locale.subscribe(() => setRevision((value) => value + 1))
+      }, [locale])
+    }
+
     function TabBody(props) {
       const t = props.t
+      useLocaleTick(props.locale)
       const info = typeof props.useTabInfo === 'function' ? props.useTabInfo() : null
       const params = (info && info.tab && info.tab.navigation && info.tab.navigation.params) || {}
       const [mode, setMode] = React.useState(params.mode === 'workbench' ? 'workbench' : 'pick')
       const [workbenchId, setWorkbenchId] = React.useState(typeof params.workbenchId === 'string' ? params.workbenchId : '')
+      const [readOnly, setReadOnly] = React.useState(params.readOnly === true)
       const [started, setStarted] = React.useState(null)
 
       React.useEffect(() => {
         if (params.mode === 'workbench') {
           setMode('workbench')
           setStarted(null)
+          setReadOnly(params.readOnly === true)
           if (typeof params.workbenchId === 'string') setWorkbenchId(params.workbenchId)
         } else if (params.mode === 'pick') {
           setMode('pick')
           setStarted(null)
+          setReadOnly(false)
         }
-      }, [params.mode, params.workbenchId])
+      }, [params.mode, params.workbenchId, params.readOnly])
 
       const active = !info || !info.tab || info.tab.visible !== false
       const sessionId = props.sessionId
+
+      const openHistory = (id, viewOnly) => {
+        setStarted(null)
+        setWorkbenchId(id)
+        setReadOnly(viewOnly === true)
+        setMode('workbench')
+      }
 
       const content =
         mode === 'workbench'
@@ -2020,6 +2499,7 @@ window.__ModuleLoader__.load({
               sessionId,
               workbenchId: started ? started.id : workbenchId,
               initialWorkbench: started,
+              readOnly,
               active,
               onChooseAnother: () => {
                 setStarted(null)
@@ -2029,9 +2509,11 @@ window.__ModuleLoader__.load({
           : h(FilePicker, {
               t,
               sessionId,
+              onOpenHistory: openHistory,
               onStarted: (workbench) => {
                 setStarted(workbench)
                 setWorkbenchId(workbench.id)
+                setReadOnly(false)
                 setMode('workbench')
               },
             })
@@ -2057,7 +2539,9 @@ window.__ModuleLoader__.load({
       )
 
       ctx.slots.inject('sidebar.right.pane.tab', () =>
-        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, (props) => h(TabBody, { ...props, t })),
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, (props) =>
+          h(TabBody, { ...props, t, locale: ctx.get('locale') }),
+        ),
       )
 
       ctx.slots.inject('sidebar.right.pane.tab.title', () =>

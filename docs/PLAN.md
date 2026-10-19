@@ -1,7 +1,8 @@
 # dsh-decision-workbench · 项目计划
 
-> 状态：**M1 + M2 + M3 已实现并在 DSH Web 0.2.1-rc.2 实测；M4/M5 待做（0.2.1 修复启动无反应并落实双栏布局）**
+> 状态：**M1–M3 已完成并实测；M4 大部分完成（来源同步、重复合并、历史工作台）；M5 部分完成（键盘、无障碍、i18n 实时切换、测试补齐）**
 > 宿主：DeepSeek Harness Web 0.2.x（当前 0.2.1-rc.2）
+> 0.3.0 起两条硬约束：**工作台绑定「会话 + 工作区」**、**讲解与实例按需生成**。自主拍板的决策见 [DECISIONS.md](DECISIONS.md)。
 > 设计基线：[INTERACTION.md](INTERACTION.md) · 交互方案全文
 > 实现说明：决策助手使用隔离的只读模型调用（`ctx.llm.stream`），不是带工具的子会话；见 5.4。
 
@@ -145,30 +146,36 @@
 | POST | `/dsh-decision-workbench/pending/ack` | 面板处理完后清除请求 |
 | GET | `/dsh-decision-workbench/files?sessionId=&query=` | 列出工作区候选文档 |
 | POST | `/dsh-decision-workbench/start` | `{ sessionId, path, restart? }` → 创建工作台并开始枚举 |
-| GET | `/dsh-decision-workbench/workbench?sessionId=` | 取该会话当前工作台 |
-| POST | `/dsh-decision-workbench/item` | 记录某题被打开 |
-| POST | `/dsh-decision-workbench/explain` | 懒生成单题解释（`force` 重试） |
+| GET | `/dsh-decision-workbench/workbench?sessionId=&workbenchId=` | 取该会话当前工作台（可指定 id 浏览历史，含来源状态） |
+| GET | `/dsh-decision-workbench/workbenches?sessionId=` | 列出本会话 + 本工作区的历史工作台 |
+| POST | `/dsh-decision-workbench/activate` | 把历史工作台设为活跃（之后可编辑） |
+| POST | `/dsh-decision-workbench/item` | 记录某题被打开（不触发生成） |
+| POST | `/dsh-decision-workbench/explain` | 按需生成单题讲解（`force` 重试） |
+| POST | `/dsh-decision-workbench/examples` | 按需生成 2–3 个具体例子 |
 | POST | `/dsh-decision-workbench/options` | 无选项时补 2–4 个方案 |
 | POST | `/dsh-decision-workbench/ask` | 针对单题追问 |
 | POST | `/dsh-decision-workbench/decide` | 三态 / 清除本题决定 |
 | POST | `/dsh-decision-workbench/preview` | 生成摘要文本与统计 |
 | POST | `/dsh-decision-workbench/submit` | 摘要回写主会话 |
 | POST | `/dsh-decision-workbench/write` | 写 `docs/decisions/<日期>-<slug>.md` |
+| POST | `/dsh-decision-workbench/resync` | 重算来源 hash 并标记失效引用 |
 
-所有路由 loopback + 同源校验；模型调用 180 秒超时。
+所有路由 loopback + 同源校验；工作台路由再校验「会话 + 当前生效工作区」，跨区返回 404；变更路由仅接受活跃工作台（历史只读，`409 read-only`）。模型调用 180 秒超时。
 
 ### 5.3 存储
 
 - M1：内存（进程重启丢失）。
-- M2–M3：`$DSH_HOME/storages/dsh-decision-workbench/workbenches.json`，保留最近 16 个工作台；工作台、决策项、解释、追问 thread、决定全部落盘。来源 hash 已记录，失效提示留待 M4。
+- M2–M3：`$DSH_HOME/storages/dsh-decision-workbench/workbenches.json`，保留最近 16 个工作台；工作台、决策项、讲解、实例、追问 thread、决定全部落盘。
+- 0.3.0：每条记录带 `workspaceRoot`，恢复时按 `(sessionId, workspaceRoot)` 重建活跃索引；没有该字段的旧记录不再恢复。
+- 来源 hash/字节数/mtime 在读取文档时记录；`GET /workbench` 只用 stat 计算 `stale/missing`，`POST /resync` 才重算 hash 并标记失效引用。
 
-### 5.4 决策助手（M2 实现）
+### 5.4 决策助手（0.3.0）
 
-- 隔离的只读模型上下文：每次枚举 / 解释 / 补方案 / 追问都是一次独立 `ctx.llm.stream()` 调用。
+- 隔离的只读模型上下文：每次枚举 / 讲解 / 实例 / 补方案 / 追问都是一次独立 `ctx.llm.stream()` 调用。
 - 初始上下文包：文档片段（最多 60k 字，按题目 quote/行号截取相关段落）+ 本题 + 本工作台已做决定；**不含主会话历史**。
+- **按需生成**：列表只枚举（不含每项背景/解释/实例）；讲解由「让助手讲解这一项」触发；实例由「举 2–3 个具体例子」单独触发。打开某一项本身不产生任何调用。
 - 只读：不写文件、不执行命令；回答中的引用由提示词要求带 `文件:行`。
-- 懒生成：列表一次生成；解释在打开某题时生成；缺失选项由用户点按钮触发生成；追问逐条生成。
-- 取舍：未使用带文件工具的子会话，换来更可控的上下文、更低的启动成本和更简单的失败重试；M4 可升级为子会话而不改面板接口。
+- 取舍：未使用带文件工具的子会话，换来更可控的上下文、更低的启动和按需成本、更简单的失败重试；升级为子会话保留为 M4 可选项。
 
 ### 5.5 摘要回写（M3）
 
@@ -183,11 +190,23 @@
 ```ts
 interface Workbench {
   id: string
-  parentSessionId: string
-  assistantSessionId?: string
-  status: 'scaffold' | 'generating' | 'ready' | 'submitting' | 'submitted'
-  source: { kind: 'file'; path: string; abs?: string; hash?: string }
+  sessionId: string
+  workspaceRoot: string          // 绑定键：与 sessionId 一起构成作用域
+  status: 'generating' | 'ready' | 'failed' | 'submitted'
+  source: {
+    kind: 'file'
+    path: string
+    abs: string
+    hash?: string
+    bytes?: number
+    mtimeMs?: number
+    stale?: boolean              // 每次 GET 时按 stat 计算，不持久化依赖
+    missing?: boolean
+  }
+  duplicatesMerged?: number
+  sourceInvalidCount?: number
   createdAt: number
+  updatedAt: number
   submittedAt?: number
   items: DecisionItem[]
 }
@@ -196,14 +215,22 @@ interface DecisionItem {
   id: string
   section?: string
   priority: 'blocking' | 'important' | 'optional'
-  status: 'unseen' | 'viewing' | 'decided' | 'unsure' | 'deferred'
+  status: 'unseen' | 'decided' | 'unsure' | 'deferred'
   title: string
   question: string
   source: { path: string; line?: number; quote?: string }
+  sourceStale?: boolean          // /resync 后引用失效
   optionsOrigin: 'spec' | 'generated' | 'none'
   options: Option[]
   recommendation?: { optionId: string; why: string }
-  explanation?: Explanation
+  explanationState: 'idle' | 'loading' | 'ready' | 'error'
+  explanation?: Explanation       // 仅按需生成
+  examplesState: 'idle' | 'loading' | 'ready' | 'error'
+  examples?: { if: string; then: string }[]   // 仅按需生成
+  examplesNote?: string
+  optionsState: 'idle' | 'loading' | 'ready' | 'error'
+  optionsError?: string
+  mergedFrom?: { id: string; title: string; question: string }[]
   decision?: { optionIds: string[]; custom?: string; rationale?: string; at: number }
   thread: ThreadMessage[]
 }
@@ -238,8 +265,8 @@ interface Explanation {
 | **M1 启动链路** | `/decision` 命令、open request、右侧栏 Tab、文件选择器、`/start`、测试 | ✅ 完成并实测 |
 | **M2 决策清单** | 决策枚举、列表/详情/解释懒加载、无选项补方案、逐题追问 | ✅ 完成并实测 |
 | **M3 决定与回写** | 选项/自定义/三态、摘要预览与提交、主会话注入、持久化、写记录 | ✅ 完成并实测 |
-| **M4 收敛** | 来源变更同步、重复项合并、历史工作台、升级为带工具的子会话 | ⬜ 未开始 |
-| **M5 打磨** | 键盘/无障碍/窄屏/全屏、成本面板、性能与测试补齐 | ⬜ 未开始 |
+| **M4 收敛** | 来源变更同步、重复项合并、历史工作台、升级为带工具的子会话 | 🟡 前三项完成；子会话升级保留为可选 |
+| **M5 打磨** | 键盘/无障碍/窄屏/全屏、成本面板、性能与测试补齐 | 🟡 键盘与 listbox/aria、i18n 实时切换、25 项单测完成；全屏/成本面板未做 |
 
 ---
 
@@ -277,12 +304,15 @@ interface Explanation {
 
 ### M4/M5
 
-- [ ] 来源 hash 监控与重新同步
-- [ ] 重复决策检测与合并
-- [ ] 历史工作台（只读浏览）
-- [ ] 决策助手升级为带文件工具的子会话（不改面板接口）
-- [ ] 键盘、无障碍、窄屏、全屏、深浅色检查
-- [ ] 测试补齐（路由守卫、状态机、Client 组件）
+- [x] 来源 hash 监控与重新同步（`/workbench` 只 stat 提示，`/resync` 重算并标记）
+- [x] 重复决策检测与合并（同题 + 标题相似，保留别名）
+- [x] 历史工作台（只读浏览 + `/activate` 继续）
+- [ ] 决策助手升级为带文件工具的子会话（不改面板接口；与省 token 目标冲突，保留可选）
+- [x] 键盘（J/K、↑/↓、Esc）与 listbox/aria
+- [x] i18n 实时切换（订阅 locale）
+- [ ] 全屏切换、成本面板、窄屏细节走查
+- [x] 测试补齐（纯函数 25 项；Host 路由跨区拒绝与按需生成实测）
+- [ ] Client 组件测试（需要可用的浏览器测试环境）
 
 ---
 
@@ -290,14 +320,24 @@ interface Explanation {
 
 - `/decision` 在 1 秒内打开右侧栏，首屏是文件选择器且能列出工作区文档。
 - `/decision docs/spec.md` 跳过选择器直接进入工作台，通常 10–30 秒列出全部决策项（模型枚举）。
-- 打开任一题，通常 5–20 秒出现解释卡（轮询更新，非流式）。
+- **打开某一项不产生模型调用**；点「让助手讲解这一项」/「举 2–3 个具体例子」后 5–20 秒出现结果（轮询更新）。
 - 有选项时标"来自 spec"，无选项时可生成 2–4 个方案并给推荐。
 - 关闭/刷新/重启后进度不丢（M3 起）。
+- **切换工作目录后**：`/workbench` 返回空、按 id 读取与所有变更路由被拒（404），历史列表为空；切回后恢复。
+- **另一个会话**（即使同一工作区）读取/修改本会话工作台被拒。
+- 来源被外部修改时出现提示，重同步后失效项被标记，已做决定不变。
 - 未点"写入项目"前，工作区无任何文件被修改。
 - 未决与拿不准在摘要与主会话里显式保留，不被猜成已决。
 - 命令出错时文案说明"发生了什么 / 为什么 / 怎么办"。
 
-**实测（2026-10-19，DSH Web 0.2.1-rc.2）**：8 项枚举约 13 秒；解释约 15 秒；追问约 10 秒且路由立即返回、轮询收敛；无选项补方案、三态决定、摘要预览、写记录均通过；刷新/重载后工作台恢复。面板视觉与键盘操作需人工确认。
+**实测（2026-10-20，DSH Web 0.2.1-rc.2 / 插件 0.3.0）**：
+
+- 枚举两份示例文档各 8 项；枚举完成后 8 项 `explanationState` / `examplesState` 全为 `idle`（打开条目不生成）。
+- 按需讲解约 11 秒（`maxTokens` 8000；2500 时推理吃满预算失败，见 DECISIONS §3）；按需实例约 2 秒、3 组「如果…就…」。
+- 三态决定、摘要统计与预览、`/write`、`/resync` 均通过。
+- 跨会话（同工作区的另一个真实 session）读取/修改 → `404 workbench-not-found`；同会话切到 `F:\dsh-plugin` 后 → `404 workbench-other-workspace`、历史列表 0；切回恢复。
+- 外部追加一行后 `/workbench` 返回 `stale=true`，`/resync` 清零并更新 hash/bytes。
+- 面板视觉、真实点击流程、键盘与 i18n 观感仍需人工确认（agent 无浏览器控制）。
 
 ---
 
@@ -338,7 +378,8 @@ dsh-decision-workbench/
 │   └── shared.js         纯函数：参数解析 / 扩展名 / 路径
 ├── docs/
 │   ├── PLAN.md           本文件
-│   └── INTERACTION.md    交互方案
+│   ├── INTERACTION.md    交互方案
+│   └── DECISIONS.md      0.3.0 自主拍板的开发决策记录
 ├── test/shared.test.js
 ├── README.md
 ├── CHANGELOG.md

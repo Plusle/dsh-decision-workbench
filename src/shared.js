@@ -3,7 +3,7 @@
 // Nothing here touches the Cordis context, the filesystem, or the network, so
 // the command parser, the model-output normalizers and the digest builder can
 // be tested without a Harness process.
-import { isAbsolute, relative, sep } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 export const PLUGIN_ID = 'dsh-decision-workbench'
 export const COMMAND_NAME = 'decision'
@@ -31,6 +31,10 @@ export const MAX_DOCUMENT_CHARS = 60_000
 export const MAX_QUESTION_CHARS = 2_000
 export const MAX_OPTIONS = 6
 export const MIN_OPTIONS = 2
+export const MAX_EXAMPLES = 4
+// Two enumerated items whose normalized title+question cross this Dice
+// similarity are treated as the same decision and merged into one row.
+export const DECISION_SIMILARITY = 0.82
 
 export const PRIORITIES = Object.freeze(['blocking', 'important', 'optional'])
 export const ITEM_STATUSES = Object.freeze(['unseen', 'decided', 'unsure', 'deferred'])
@@ -79,6 +83,29 @@ export function isPathInside(root, target) {
 /** Normalize a path for storage and display: forward slashes on every OS. */
 export function toPosixPath(path) {
   return String(path ?? '').split(sep).join('/')
+}
+
+// --- workspace identity ------------------------------------------------------
+
+/**
+ * Canonical form of a workspace root, used as the workbench's binding key.
+ * A workbench belongs to exactly one (session, workspace) pair: the same
+ * session that later switches its working directory must not reach it.
+ */
+export function normalizeWorkspacePath(path) {
+  const text = String(path ?? '').trim()
+  if (text === '') return ''
+  return toPosixPath(resolve(text))
+}
+
+/** Compare two workspace roots after canonicalization. */
+export function sameWorkspaceRoot(left, right) {
+  const a = normalizeWorkspacePath(left)
+  const b = normalizeWorkspacePath(right)
+  if (a === '' || b === '') return false
+  // Windows and macOS compare paths case-insensitively; Linux does not.
+  if (process.platform === 'win32' || process.platform === 'darwin') return a.toLowerCase() === b.toLowerCase()
+  return a === b
 }
 
 // --- text helpers ------------------------------------------------------------
@@ -349,6 +376,7 @@ export function normalizeDecisionPayload(raw, options = {}) {
       options: normalizedOptions.options,
       recommendation: normalizedOptions.recommendation,
       explanationState: 'idle',
+      examplesState: 'idle',
       optionsState: 'idle',
       threadState: 'idle',
       thread: [],
@@ -359,6 +387,125 @@ export function normalizeDecisionPayload(raw, options = {}) {
   }
 
   return { title: documentTitle, items }
+}
+
+/** Fold one duplicate item into the canonical one, keeping the richer data. */
+function absorbDecision(canonical, duplicate) {
+  const aliases = Array.isArray(canonical.mergedFrom) ? canonical.mergedFrom : []
+  aliases.push({
+    id: typeof duplicate.id === 'string' ? duplicate.id : '',
+    title: textOf(duplicate.title, 120),
+    question: textOf(duplicate.question, 600),
+  })
+  canonical.mergedFrom = aliases
+
+  const rank = { optional: 0, important: 1, blocking: 2 }
+  if ((rank[duplicate.priority] ?? 0) > (rank[canonical.priority] ?? 0)) canonical.priority = duplicate.priority
+
+  const canonicalOptions = Array.isArray(canonical.options) ? canonical.options : []
+  const duplicateOptions = Array.isArray(duplicate.options) ? duplicate.options : []
+  if (canonicalOptions.length === 0 && duplicateOptions.length > 0) {
+    canonical.options = duplicateOptions
+    canonical.optionsOrigin = duplicate.optionsOrigin || 'spec'
+    canonical.recommendation = duplicate.recommendation
+  }
+  if (!canonical.context && duplicate.context) canonical.context = duplicate.context
+  if (canonical.source && duplicate.source) {
+    if (canonical.source.line === undefined && duplicate.source.line !== undefined) canonical.source.line = duplicate.source.line
+    if (!canonical.source.quote && duplicate.source.quote) canonical.source.quote = duplicate.source.quote
+  }
+}
+
+function normalizeForSimilarity(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+}
+
+function bigramSet(text) {
+  const set = new Set()
+  for (let index = 0; index < text.length - 1; index += 1) set.add(text.slice(index, index + 2))
+  return set
+}
+
+function diceSimilarity(left, right) {
+  if (left === right) return 1
+  if (left.length < 2 || right.length < 2) return 0
+  const a = bigramSet(left)
+  const b = bigramSet(right)
+  let shared = 0
+  for (const gram of a) if (b.has(gram)) shared += 1
+  return (2 * shared) / (a.size + b.size)
+}
+
+/**
+ * Merge decisions that the model listed twice under slightly different
+ * wording. The first item stays the canonical row; later near-duplicates are
+ * folded in (their options, line and title become an alias), so the panel
+ * shows one row instead of two half-identical questions.
+ *
+ * Two rows count as the same decision when their normalized title+question are
+ * almost identical, or when the question matches and the titles are close.
+ */
+export function mergeDuplicateItems(items = [], options = {}) {
+  const threshold = Number.isFinite(options.threshold) ? options.threshold : DECISION_SIMILARITY
+  const kept = []
+  const signatures = []
+  let merged = 0
+
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const title = normalizeForSimilarity(textOf(item.title, 120))
+    const question = normalizeForSimilarity(textOf(item.question, 600))
+    const signature = `${title}${question}`
+    if (signature === '') {
+      kept.push(item)
+      signatures.push({ title: '', question: '', signature: '' })
+      continue
+    }
+    const canonicalIndex = signatures.findIndex((other) => {
+      if (other.signature === '') return false
+      if (other.signature === signature) return true
+      // Same question + nearly same title is the same decision even when one
+      // title carries a parenthetical qualifier.
+      if (other.question !== '' && question !== '' && other.question === question) {
+        if (other.title === '' || title === '') return true
+        return (
+          diceSimilarity(other.title, title) >= 0.5 || other.title.includes(title) || title.includes(other.title)
+        )
+      }
+      return diceSimilarity(other.signature, signature) >= threshold
+    })
+    if (canonicalIndex < 0) {
+      kept.push(item)
+      signatures.push({ title, question, signature })
+      continue
+    }
+    absorbDecision(kept[canonicalIndex], item)
+    merged += 1
+  }
+
+  return { items: kept, merged }
+}
+
+/** Item ids whose quote vanished from the document, or whose line no longer exists. */
+export function findStaleItems(text, items = []) {
+  const document = String(text ?? '')
+  const lineCount = document === '' ? 0 : document.split('\n').length
+  const stale = []
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item.id !== 'string') continue
+    const source = item.source && typeof item.source === 'object' ? item.source : {}
+    let invalid = false
+    if (typeof source.quote === 'string' && source.quote !== '') {
+      invalid = !document.includes(source.quote)
+    } else {
+      const line = Number(source.line)
+      if (Number.isFinite(line) && line > lineCount) invalid = true
+    }
+    if (invalid) stale.push(item.id)
+  }
+  return stale
 }
 
 export function normalizeExplanationPayload(raw, fallback = {}) {
@@ -402,6 +549,31 @@ export function normalizeExplanationPayload(raw, fallback = {}) {
   }
 }
 
+export function normalizeExamplesPayload(raw, fallback = {}) {
+  const object = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const list = Array.isArray(raw) ? raw : asArray(object.examples ?? object.scenarios ?? object.cases ?? object.ifThen)
+  const examples = []
+  for (const entry of list) {
+    if (examples.length >= MAX_EXAMPLES) break
+    if (entry === null || entry === undefined) continue
+    if (typeof entry !== 'object' || Array.isArray(entry)) {
+      // A bare sentence is still a usable example; render it as the outcome.
+      const sentence = textOf(entry, 400)
+      if (sentence === '') continue
+      examples.push({ if: '', then: sentence })
+      continue
+    }
+    const condition = textOf(entry.if ?? entry.condition ?? entry.when ?? entry.scenario, 200)
+    const then = textOf(entry.then ?? entry.result ?? entry.effect ?? entry.outcome ?? entry.example, 400)
+    if (condition === '' && then === '') continue
+    examples.push({ if: condition, then })
+  }
+  return {
+    examples,
+    note: textOf(object.note ?? object.caveat ?? object.assumption, 240) || textOf(fallback.note, 240),
+  }
+}
+
 export function normalizeAskText(raw) {
   const text = String(raw ?? '')
     .replace(/^```[a-zA-Z]*\s*\n?/, '')
@@ -424,8 +596,9 @@ export function buildEnumerationPrompt({ documentText, sourcePath, truncated = f
     '5. priority 取 blocking（不决定就无法开工/上线）、important（影响方案质量但可后补）、optional（可以以后再说）。',
     '6. line 是问题在文档中的大致行号（从 1 开始）；quote 是能定位该问题的原文片段，不超过 80 字。',
     '7. 按文档顺序排列，最多 30 项（优先必决与建议）；文档没有任何需要决策的点时返回空数组。',
+    '8. 不要输出解释、背景段落或具体实例：讲解与实例在用户打开某一项时才按需生成。',
     'JSON 结构：',
-    '{"title":"文档标题","decisions":[{"title":"短标题（不超过20字）","question":"要决定的问题，一句话","section":"所在章节","priority":"blocking|important|optional","context":"为什么需要决定（不超过80字）","options":[{"label":"方案名","tradeoff":"代价与收益","bestWhen":"什么情况下选它","risk":"主要风险"}],"recommendation":{"label":"推荐的方案名","why":"一句理由"},"line":12,"quote":"原文片段"}]}',
+    '{"title":"文档标题","decisions":[{"title":"短标题（不超过20字）","question":"要决定的问题，一句话","section":"所在章节","priority":"blocking|important|optional","options":[{"label":"方案名","tradeoff":"代价与收益","bestWhen":"什么情况下选它","risk":"主要风险"}],"recommendation":{"label":"推荐的方案名","why":"一句理由"},"line":12,"quote":"原文片段"}]}',
   ].join('\n')
 
   const notice = truncated
@@ -454,8 +627,9 @@ export function buildExplanationPrompt({ item, excerpt, sourcePath, decided = []
   const system = [
     '你是决策分析助手。基于给定的文档片段，为一个决策点写一份能直接帮助人做决定的说明。',
     '只输出 JSON：',
-    '{"gist":"一句话结论（不超过60字）","whyNow":"为什么现在要决定（不超过80字）","background":"背景（不超过200字）","scenarios":[{"if":"选择条件或方案","then":"会发生什么"}],"impact":"不决定或选错的后果（不超过120字）","assumptions":["需要确认的假设"],"citations":[{"line":12,"quote":"原文不超过60字"}]}',
+    '{"gist":"一句话结论（不超过60字）","whyNow":"为什么现在要决定（不超过80字）","background":"背景（不超过200字）","impact":"不决定或选错的后果（不超过120字）","assumptions":["需要确认的假设"],"citations":[{"line":12,"quote":"原文不超过60字"}]}',
     '不要引入文档没有的事实；无法确定的内容写进 assumptions，不要编造引用。',
+    '这里只要解释，不要写具体场景或实例——用户会单独要求例子。',
   ].join('\n')
   const optionText = item.options.length > 0
     ? item.options.map((option) => `- ${option.label}${option.tradeoff ? `：${option.tradeoff}` : ''}`).join('\n')
@@ -492,6 +666,39 @@ export function buildOptionsPrompt({ item, excerpt, sourcePath }) {
     `决策标题：${item.title}`,
     `需要决定的问题：${item.question}`,
     item.context ? `文档中的背景：${item.context}` : '',
+    '',
+    '相关文档片段：',
+    '--- 片段开始 ---',
+    excerpt,
+    '--- 片段结束 ---',
+    '',
+    '请只输出上述 JSON。',
+  ].filter((line) => line !== '').join('\n')
+  return { system, user }
+}
+
+/**
+ * Concrete "if we pick X, this is what happens" illustrations. Kept in its own
+ * request so the user pays for examples only when they ask for them.
+ */
+export function buildExamplesPrompt({ item, excerpt, sourcePath, decided = [] }) {
+  const system = [
+    '你是决策分析助手。用户已经理解了某个决策点，现在只想看具体例子：选了某个方案、或迟迟不决定，现实中到底会发生什么。',
+    '给出 2–3 个例子，每个用「如果……就……」写清楚，要落在文档描述的系统、流程或角色上。',
+    '只输出 JSON：',
+    '{"examples":[{"if":"如果选 A / 不决定 / 只完成一半","then":"具体会发生什么（不超过120字）"}],"note":"可选：一句话提醒"}',
+    '不要引入文档没有的事实；信息不足时给出保守的例子，并在 note 里写明这是假设。',
+  ].join('\n')
+  const optionText = item.options.length > 0
+    ? item.options.map((option) => `- ${option.label}${option.tradeoff ? `：${option.tradeoff}` : ''}`).join('\n')
+    : '（文档没有给出备选方案）'
+  const prior = decidedLines(decided)
+  const user = [
+    `文档路径：${sourcePath}`,
+    `决策标题：${item.title}`,
+    `需要决定的问题：${item.question}`,
+    `已有的备选方案：\n${optionText}`,
+    prior.length > 0 ? `\n同一份文档中已经做出的决定（保持一致）：\n${prior.join('\n')}` : '',
     '',
     '相关文档片段：',
     '--- 片段开始 ---',
@@ -577,6 +784,9 @@ export function buildDigest(workbench) {
   lines.push(`文档：${sourcePath}`)
   if (workbench.title) lines.push(`文档标题：${workbench.title}`)
   lines.push(`工作台：${workbench.id}`)
+  if (workbench.source && workbench.source.stale) {
+    lines.push('> 注意：来源文档在该工作台打开后发生过变化，个别出处可能需要复核。')
+  }
   lines.push(
     `统计：已决定 ${stats.decided} / 拿不准 ${stats.unsure} / 稍后 ${stats.deferred} / 未处理 ${stats.unseen}`,
   )

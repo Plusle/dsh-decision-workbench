@@ -4,18 +4,25 @@ import assert from 'node:assert/strict'
 import {
   DECISION_LIMIT,
   buildDigest,
+  buildExamplesPrompt,
+  buildExplanationPrompt,
   countDecisions,
   decisionText,
+  findStaleItems,
   isDocumentPath,
   isPathInside,
+  mergeDuplicateItems,
   normalizeAskText,
   normalizeDecisionPayload,
+  normalizeExamplesPayload,
   normalizeExplanationPayload,
   normalizeOptionsPayload,
   normalizePriority,
+  normalizeWorkspacePath,
   parseDecisionInput,
   parseJsonPayload,
   pickExcerpt,
+  sameWorkspaceRoot,
   slugify,
   toPosixPath,
   truncateDocument,
@@ -297,4 +304,118 @@ test('file slugs are safe for a decision record filename', () => {
   assert.equal(slugify('  a  b  '), 'a-b')
   assert.equal(slugify('///'), 'decisions')
   assert.ok(slugify('x'.repeat(80)).length <= 48)
+})
+
+// --- 0.3.0: workspace binding, duplicate merge, on-demand examples ------------
+
+test('workspace roots are canonicalized before comparison', () => {
+  const root = normalizeWorkspacePath('F:\\dsh-plugin\\demo')
+  assert.equal(root.includes('\\'), false)
+  assert.equal(normalizeWorkspacePath(''), '')
+  assert.equal(normalizeWorkspacePath('   '), '')
+  // Same directory written two ways must compare equal on this platform, and a
+  // different directory must never be treated as the same workspace.
+  assert.equal(sameWorkspaceRoot('F:\\dsh-plugin\\demo', root), true)
+  assert.equal(sameWorkspaceRoot('F:/dsh-plugin/demo', root), true)
+  assert.equal(sameWorkspaceRoot('F:/dsh-plugin/demo/nested', root), false)
+  assert.equal(sameWorkspaceRoot('F:/dsh-plugin/other', root), false)
+  assert.equal(sameWorkspaceRoot('', root), false)
+})
+
+test('near-duplicate decisions are merged and keep the richer data', () => {
+  const base = {
+    id: 'd1',
+    title: '退款渠道',
+    question: '退款打到哪里？',
+    priority: 'optional',
+    options: [],
+    optionsOrigin: 'none',
+    source: { path: 'spec.md', line: 42 },
+  }
+  const duplicate = {
+    id: 'd2',
+    title: '退款渠道（微信）',
+    question: '退款打到哪里？',
+    priority: 'blocking',
+    options: [{ id: 'o1', label: '原路退回', from: 'spec' }],
+    optionsOrigin: 'spec',
+    recommendation: { optionId: 'o1', why: '用户预期' },
+    source: { path: 'spec.md' },
+  }
+  const distinct = { id: 'd3', title: '重试策略', question: '失败后重试几次？', priority: 'important', options: [] }
+
+  const merged = mergeDuplicateItems([base, duplicate, distinct])
+  assert.equal(merged.merged, 1)
+  assert.equal(merged.items.length, 2)
+  const first = merged.items[0]
+  assert.equal(first.id, 'd1')
+  // A merged row keeps the strongest priority and anything the canonical lacked.
+  assert.equal(first.priority, 'blocking')
+  assert.equal(first.options.length, 1)
+  assert.equal(first.optionsOrigin, 'spec')
+  assert.equal(first.source.line, 42)
+  assert.equal(first.mergedFrom.length, 1)
+  assert.equal(first.mergedFrom[0].id, 'd2')
+  assert.equal(merged.items[1].title, '重试策略')
+  assert.equal(merged.items[1].mergedFrom, undefined)
+
+  const noMerge = mergeDuplicateItems([base, { ...base, id: 'd9', title: '灰度维度', question: '灰度按什么维度切？' }])
+  assert.equal(noMerge.merged, 0)
+  assert.equal(noMerge.items.length, 2)
+})
+
+test('example payloads normalize objects, strings and a note', () => {
+  const normalized = normalizeExamplesPayload({
+    examples: [
+      { if: '选择自动退款', then: '超时订单会直接退回，对账需要补一条冲正' },
+      { condition: '一直不决定', result: '订单挂在待处理里，客服每天手工清' },
+      '第三种只是写清楚结果',
+    ],
+    note: '以上基于文档现有流程。',
+  })
+  assert.equal(normalized.examples.length, 3)
+  assert.equal(normalized.examples[0].if, '选择自动退款')
+  assert.equal(normalized.examples[1].if, '一直不决定')
+  assert.equal(normalized.examples[2].if, '')
+  assert.equal(normalized.examples[2].then, '第三种只是写清楚结果')
+  assert.equal(normalized.note, '以上基于文档现有流程。')
+
+  assert.deepEqual(normalizeExamplesPayload(null).examples, [])
+  const capped = normalizeExamplesPayload({ examples: Array.from({ length: 9 }, (_, index) => ({ if: `条件${index}`, then: '结果' })) })
+  assert.ok(capped.examples.length <= 4)
+})
+
+test('stale citations are detected by quote and by line number', () => {
+  const document = ['第一行', '第二行：幂等键用订单号', '第三行'].join('\n')
+  const items = [
+    { id: 'd1', source: { quote: '幂等键用订单号' } },
+    { id: 'd2', source: { quote: '这句话已经不存在' } },
+    { id: 'd3', source: { line: 99 } },
+    { id: 'd4', source: { line: 2 } },
+    { id: 'd5', source: {} },
+  ]
+  assert.deepEqual(findStaleItems(document, items), ['d2', 'd3'])
+  assert.deepEqual(findStaleItems(document, [{ id: 'd9' }]), [])
+})
+
+test('prompts keep explanation and examples as separate asks', () => {
+  const item = { title: '退款渠道', question: '退款打到哪里？', context: '', options: [], thread: [] }
+  const explanation = buildExplanationPrompt({ item, excerpt: '片段', sourcePath: 'spec.md' })
+  assert.ok(explanation.system.includes('不要写具体场景'))
+  assert.equal(explanation.system.includes('"scenarios"'), false)
+
+  const examples = buildExamplesPrompt({ item, excerpt: '片段', sourcePath: 'spec.md' })
+  assert.ok(examples.system.includes('"examples"'))
+  assert.ok(examples.system.includes('如果'))
+  assert.ok(examples.user.includes('spec.md'))
+})
+
+test('a stale source is noted in the digest', () => {
+  const digest = buildDigest({
+    id: 'dw_stale',
+    title: '支付重构',
+    source: { path: 'spec.md', stale: true },
+    items: [{ id: 'd1', title: '退款渠道', status: 'decided', priority: 'blocking', options: [{ id: 'o1', label: 'A' }], decision: { optionIds: ['o1'] }, source: { path: 'spec.md' } }],
+  })
+  assert.match(digest, /来源文档在该工作台打开后发生过变化/)
 })

@@ -31,19 +31,25 @@ import {
   buildAskPrompt,
   buildDigest,
   buildEnumerationPrompt,
+  buildExamplesPrompt,
   buildExplanationPrompt,
   buildOptionsPrompt,
   clampText,
   countDecisions,
+  findStaleItems,
   isDocumentPath,
   isPathInside,
+  mergeDuplicateItems,
   normalizeAskText,
   normalizeDecisionPayload,
+  normalizeExamplesPayload,
   normalizeExplanationPayload,
   normalizeOptionsPayload,
+  normalizeWorkspacePath,
   parseDecisionInput,
   parseJsonPayload,
   pickExcerpt,
+  sameWorkspaceRoot,
   slugify,
   toPosixPath,
   truncateDocument,
@@ -296,8 +302,13 @@ export function apply(ctx) {
   const pending = new Map()
   /** workbenchId -> workbench record */
   const workbenches = new Map()
-  /** sessionId -> workbenchId of the most recently opened (or restored) workbench */
-  const activeBySession = new Map()
+  /**
+   * `${sessionId}|${workspaceRoot}` -> workbenchId of the most recently opened
+   * (or restored) workbench. A workbench never crosses that pair: the same
+   * session pointed at another directory (or another session opening the same
+   * document) sees nothing until it starts its own workbench.
+   */
+  const activeByScope = new Map()
   /** `${workbenchId}:${itemId}:${kind}` while one generation runs */
   const inFlight = new Set()
   /** AbortControllers of live model calls */
@@ -350,6 +361,11 @@ export function apply(ctx) {
 
   // --- persistence ------------------------------------------------------------
 
+  /** A workbench is addressable only from the session and workspace it was born in. */
+  function scopeKey(sessionId, root) {
+    return `${sessionId}|${normalizeWorkspacePath(root)}`
+  }
+
   async function ensureLoaded() {
     if (storeLoaded) return
     storeLoaded = true
@@ -363,13 +379,17 @@ export function apply(ctx) {
     for (const record of list) {
       if (!record || typeof record !== 'object' || typeof record.id !== 'string') continue
       if (!Array.isArray(record.items)) continue
+      if (typeof record.sessionId !== 'string') continue
+      // Records written before 0.3.0 carry no workspace binding. They cannot be
+      // proven to belong to the current workspace, so they are not restored:
+      // exposing them would be exactly the cross-workspace leak this guards.
+      if (typeof record.workspaceRoot !== 'string' || record.workspaceRoot === '') continue
       workbenches.set(record.id, record)
-      if (typeof record.sessionId === 'string') {
-        const currentId = activeBySession.get(record.sessionId)
-        const current = currentId === undefined ? undefined : workbenches.get(currentId)
-        if (current === undefined || (record.updatedAt ?? 0) > (current.updatedAt ?? 0)) {
-          activeBySession.set(record.sessionId, record.id)
-        }
+      const key = scopeKey(record.sessionId, record.workspaceRoot)
+      const currentId = activeByScope.get(key)
+      const current = currentId === undefined ? undefined : workbenches.get(currentId)
+      if (current === undefined || (record.updatedAt ?? 0) > (current.updatedAt ?? 0)) {
+        activeByScope.set(key, record.id)
       }
     }
   }
@@ -439,10 +459,12 @@ export function apply(ctx) {
     workbench.revision = (typeof workbench.revision === 'number' ? workbench.revision : 0) + 1
   }
 
-  function createWorkbench(sessionId, document) {
+  function createWorkbench(sessionId, document, root) {
+    const workspaceRoot = normalizeWorkspacePath(root)
     const workbench = {
       id: `dw_${randomUUID()}`,
       sessionId,
+      workspaceRoot,
       revision: 0,
       status: 'generating',
       title: '',
@@ -453,28 +475,62 @@ export function apply(ctx) {
       error: '',
     }
     workbenches.set(workbench.id, workbench)
-    activeBySession.set(sessionId, workbench.id)
+    activeByScope.set(scopeKey(sessionId, workspaceRoot), workbench.id)
     saveSoon()
     return workbench
   }
 
-  function activeWorkbench(sessionId) {
-    const id = activeBySession.get(sessionId)
+  function activeWorkbench(sessionId, root) {
+    const id = activeByScope.get(scopeKey(sessionId, root))
     return id === undefined ? undefined : workbenches.get(id)
   }
 
-  function requireWorkbench(sessionId, workbenchId) {
+  /** Every workbench this session created in this workspace, newest first. */
+  function workbenchesForScope(sessionId, root) {
+    return [...workbenches.values()]
+      .filter((record) => record.sessionId === sessionId && sameWorkspaceRoot(record.workspaceRoot, root))
+      .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+  }
+
+  function requireWorkbench(sessionId, workbenchId, root) {
     let workbench
     if (typeof workbenchId === 'string' && workbenchId !== '') {
       workbench = workbenches.get(workbenchId)
-      if (workbench === undefined || workbench.sessionId !== sessionId) {
-        throw new HttpError(404, 'workbench-not-found', '这个决策工作台不存在，或不属于当前会话。')
+      if (workbench === undefined) {
+        throw new HttpError(404, 'workbench-not-found', '这个决策工作台不存在，可能已经被清理。')
+      }
+      if (workbench.sessionId !== sessionId) {
+        throw new HttpError(404, 'workbench-not-found', '这个决策工作台不属于当前会话。')
+      }
+      if (!sameWorkspaceRoot(workbench.workspaceRoot, root)) {
+        // The session changed its working directory: its own older workbench is
+        // still not reachable from here, because a workbench is bound to the
+        // workspace it was created in.
+        throw new HttpError(404, 'workbench-other-workspace', '这个决策工作台属于另一个工作区，在这里打不开。请用 /decision 在当前工作区重新开始。')
       }
     } else {
-      workbench = activeWorkbench(sessionId)
-      if (workbench === undefined) throw new HttpError(404, 'workbench-not-found', '当前会话还没有决策工作台。')
+      workbench = activeWorkbench(sessionId, root)
+      if (workbench === undefined) throw new HttpError(404, 'workbench-not-found', '这个工作区里还没有决策工作台，先用 /decision 打开一个。')
     }
     return workbench
+  }
+
+  /** Mutating routes only accept the workbench currently active in this scope. */
+  function requireActiveWorkbench(sessionId, workbenchId, root) {
+    const workbench = requireWorkbench(sessionId, workbenchId, root)
+    const active = activeWorkbench(sessionId, root)
+    if (active === undefined || active.id !== workbench.id) {
+      throw new HttpError(409, 'read-only', '这是历史工作台，只能查看。点「继续这个工作台」后才能修改。')
+    }
+    return workbench
+  }
+
+  async function requireWorkspace(sessionId) {
+    const root = await resolveWorkspace(agentOf(sessionId))
+    if (root === undefined || root === '') {
+      throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再继续。')
+    }
+    return root
   }
 
   function requireItem(workbench, itemId) {
@@ -581,16 +637,76 @@ export function apply(ctx) {
     const cached = documentCache.get(workbench.id)
     if (cached !== undefined) return cached
     let text
+    let info
     try {
       text = await readFile(workbench.source.abs, 'utf8')
+      info = await stat(workbench.source.abs)
     } catch {
       throw new HttpError(404, 'source-missing', `来源文档已不存在：${workbench.source.path}。请换一份文档重新开始。`)
     }
     const entry = { text, hash: hashText(text) }
     documentCache.set(workbench.id, entry)
-    workbench.source.bytes = Buffer.byteLength(text, 'utf8')
+    workbench.source.bytes = info.size
+    workbench.source.mtimeMs = info.mtimeMs
     workbench.source.hash = entry.hash
+    workbench.source.stale = false
+    workbench.source.missing = false
     return entry
+  }
+
+  /**
+   * Cheap change detection for every `/workbench` read: one stat, no file read,
+   * no model call. A stale flag only surfaces a banner; nothing is invalidated
+   * until the user asks for a resync.
+   */
+  async function refreshSourceState(workbench) {
+    const source = workbench.source
+    if (!source || typeof source.abs !== 'string' || source.abs === '') return workbench
+    try {
+      const info = await stat(source.abs)
+      source.missing = false
+      const known = typeof source.hash === 'string' && source.hash !== ''
+      source.stale = known && (info.size !== source.bytes || info.mtimeMs !== source.mtimeMs)
+    } catch {
+      source.missing = true
+    }
+    return workbench
+  }
+
+  /**
+   * Re-read the source and re-check every citation. Decisions are never
+   * dropped: an item whose quote disappeared is flagged `sourceStale` for the
+   * user to revisit, and untouched items keep their status.
+   */
+  async function resyncSource(workbench) {
+    let text
+    let info
+    try {
+      text = await readFile(workbench.source.abs, 'utf8')
+      info = await stat(workbench.source.abs)
+    } catch {
+      throw new HttpError(404, 'source-missing', `来源文档已不存在：${workbench.source.path}。`)
+    }
+    const hash = hashText(text)
+    const changed = hash !== workbench.source.hash
+    documentCache.set(workbench.id, { text, hash })
+    workbench.source.hash = hash
+    workbench.source.bytes = info.size
+    workbench.source.mtimeMs = info.mtimeMs
+    workbench.source.stale = false
+    workbench.source.missing = false
+    workbench.source.resyncedAt = Date.now()
+    if (changed) {
+      const stale = new Set(findStaleItems(text, workbench.items))
+      for (const item of workbench.items) item.sourceStale = stale.has(item.id)
+      workbench.sourceInvalidCount = stale.size
+    } else {
+      for (const item of workbench.items) item.sourceStale = false
+      workbench.sourceInvalidCount = 0
+    }
+    touch(workbench)
+    await saveNow()
+    return workbench
   }
 
   // --- generation -------------------------------------------------------------
@@ -633,7 +749,12 @@ export function apply(ctx) {
         parsed = normalizeDecisionPayload(parseJsonPayload(raw), { sourcePath: workbench.source.path })
       }
       workbench.title = parsed.title || workbench.title || ''
-      workbench.items = parsed.items
+      // Near-duplicate rows are folded here, once, so the user never answers
+      // the same question twice under two slightly different titles.
+      const merged = mergeDuplicateItems(parsed.items)
+      workbench.items = merged.items
+      workbench.duplicatesMerged = merged.merged
+      workbench.sourceInvalidCount = 0
       workbench.status = 'ready'
       workbench.error = ''
       workbench.generatedAt = Date.now()
@@ -666,7 +787,7 @@ export function apply(ctx) {
         sourcePath: workbench.source.path,
         decided: workbench.items,
       })
-      const raw = await callModel({ ...prompt, maxTokens: 6_000 })
+      const raw = await callModel({ ...prompt, maxTokens: 8_000 })
       item.explanation = normalizeExplanationPayload(parseJsonPayload(raw), {
         path: workbench.source.path,
         gist: item.context,
@@ -708,6 +829,46 @@ export function apply(ctx) {
     } catch (error) {
       item.optionsState = 'error'
       item.optionsError = describeError(error)
+    } finally {
+      inFlight.delete(key)
+      touch(workbench)
+      saveSoon()
+    }
+  }
+
+  /**
+   * Concrete examples are their own request. The panel never calls this on item
+   * open: the user presses a button, so a browsing pass costs zero tokens.
+   */
+  async function generateExamples(workbench, item, force = false) {
+    if (!force && item.examplesState === 'ready') return
+    const key = `${workbench.id}:${item.id}:examples`
+    if (inFlight.has(key)) return
+    inFlight.add(key)
+    item.examplesState = 'loading'
+    item.examplesError = ''
+    if (force) item.examples = []
+    touch(workbench)
+    saveSoon()
+    try {
+      const document = await readDocument(workbench)
+      const excerpt = pickExcerpt(document.text, item.source)
+      const prompt = buildExamplesPrompt({
+        item,
+        excerpt,
+        sourcePath: workbench.source.path,
+        decided: workbench.items,
+      })
+      const raw = await callModel({ ...prompt, maxTokens: 3_000 })
+      const normalized = normalizeExamplesPayload(parseJsonPayload(raw))
+      if (normalized.examples.length === 0) throw new Error('助手没有给出具体例子，请重试。')
+      item.examples = normalized.examples
+      item.examplesNote = normalized.note
+      item.examplesState = 'ready'
+      item.examplesError = ''
+    } catch (error) {
+      item.examplesState = 'error'
+      item.examplesError = describeError(error)
     } finally {
       inFlight.delete(key)
       touch(workbench)
@@ -771,12 +932,12 @@ export function apply(ctx) {
 
   // --- starting a workbench ---------------------------------------------------
 
-  async function startFromDocument(sessionId, document, restart = false) {
-    const existing = activeWorkbench(sessionId)
+  async function startFromDocument(sessionId, document, root, restart = false) {
+    const existing = activeWorkbench(sessionId, root)
     if (!restart && existing !== undefined && existing.source.abs === document.abs && existing.status !== 'failed') {
       return existing
     }
-    const workbench = createWorkbench(sessionId, document)
+    const workbench = createWorkbench(sessionId, document, root)
     void generateDecisions(workbench)
     return workbench
   }
@@ -813,7 +974,17 @@ export function apply(ctx) {
 
     route('/pending', ['GET'], async (request, response) => {
       const sessionId = requireSessionId(sessionIdFromQuery(request.url))
-      sendJson(response, 200, { ok: true, pending: takePending(sessionId) ?? null })
+      const pendingRequest = takePending(sessionId)
+      if (pendingRequest !== undefined && typeof pendingRequest.workspaceRoot === 'string') {
+        const root = await resolveWorkspace(agentOf(sessionId))
+        if (root !== undefined && !sameWorkspaceRoot(pendingRequest.workspaceRoot, root)) {
+          // The session changed directory after `/decision` ran. Opening that
+          // workbench here would show one workspace's data inside another.
+          sendJson(response, 200, { ok: true, pending: null, dropped: true })
+          return
+        }
+      }
+      sendJson(response, 200, { ok: true, pending: pendingRequest ?? null })
     })
 
     route('/pending/ack', ['POST'], async (request, response) => {
@@ -827,11 +998,7 @@ export function apply(ctx) {
       const url = new URL(request.url, 'http://127.0.0.1')
       const sessionId = requireSessionId(url.searchParams.get('sessionId'))
       const query = url.searchParams.get('query') ?? ''
-      const agent = agentOf(sessionId)
-      const root = await resolveWorkspace(agent)
-      if (root === undefined) {
-        throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再选择文件。')
-      }
+      const root = await requireWorkspace(sessionId)
       sendJson(response, 200, { ok: true, root: toPosixPath(root), files: await listDocuments(root, query) })
     })
 
@@ -839,30 +1006,71 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const agent = agentOf(sessionId)
-      const root = await resolveWorkspace(agent)
-      if (root === undefined) {
-        throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再开始。')
-      }
+      const root = await requireWorkspace(sessionId)
       if (typeof body.path !== 'string' || body.path.trim() === '') {
         throw new HttpError(400, 'invalid', '请选择一份文档。')
       }
       const document = await resolveDocument(root, body.path)
-      const workbench = await startFromDocument(sessionId, document, body.restart === true)
+      const workbench = await startFromDocument(sessionId, document, root, body.restart === true)
+      await refreshSourceState(workbench)
       sendJson(response, 200, { ok: true, workbench })
     })
 
     route('/workbench', ['GET'], async (request, response) => {
       await ensureLoaded()
+      const url = new URL(request.url, 'http://127.0.0.1')
+      const sessionId = requireSessionId(url.searchParams.get('sessionId'))
+      const workbenchId = url.searchParams.get('workbenchId') ?? ''
+      const root = await requireWorkspace(sessionId)
+      const active = activeWorkbench(sessionId, root)
+      // Without an explicit id this answers "what is open here"; with one it
+      // also serves history browsing, still bound to this session+workspace.
+      const workbench = workbenchId === '' ? active ?? null : requireWorkbench(sessionId, workbenchId, root)
+      if (workbench) await refreshSourceState(workbench)
+      sendJson(response, 200, {
+        ok: true,
+        workbench,
+        activeId: active ? active.id : '',
+      })
+    })
+
+    route('/workbenches', ['GET'], async (request, response) => {
+      await ensureLoaded()
       const sessionId = requireSessionId(sessionIdFromQuery(request.url))
-      sendJson(response, 200, { ok: true, workbench: activeWorkbench(sessionId) ?? null })
+      const root = await requireWorkspace(sessionId)
+      const active = activeWorkbench(sessionId, root)
+      const list = workbenchesForScope(sessionId, root).slice(0, 12).map((record) => ({
+        id: record.id,
+        title: record.title || record.source?.path || '',
+        status: record.status,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        source: { path: record.source?.path ?? '' },
+        stats: countDecisions(record.items),
+        active: active !== undefined && active.id === record.id,
+      }))
+      sendJson(response, 200, { ok: true, root: toPosixPath(root), workbenches: list })
+    })
+
+    route('/activate', ['POST'], async (request, response) => {
+      await ensureLoaded()
+      const body = JSON.parse((await readBody(request)) || '{}')
+      const sessionId = requireSessionId(body.sessionId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireWorkbench(sessionId, body.workbenchId, root)
+      activeByScope.set(scopeKey(sessionId, root), workbench.id)
+      touch(workbench)
+      await saveNow()
+      await refreshSourceState(workbench)
+      sendJson(response, 200, { ok: true, workbench })
     })
 
     route('/item', ['POST'], async (request, response) => {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireWorkbench(sessionId, body.workbenchId, root)
       const item = requireItem(workbench, body.itemId)
       item.lastViewedAt = Date.now()
       sendJson(response, 200, { ok: true, item })
@@ -872,9 +1080,21 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const item = requireItem(workbench, body.itemId)
       void explainItem(workbench, item, body.force === true)
+      sendJson(response, 200, { ok: true, item })
+    })
+
+    route('/examples', ['POST'], async (request, response) => {
+      await ensureLoaded()
+      const body = JSON.parse((await readBody(request)) || '{}')
+      const sessionId = requireSessionId(body.sessionId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
+      const item = requireItem(workbench, body.itemId)
+      void generateExamples(workbench, item, body.force === true)
       sendJson(response, 200, { ok: true, item })
     })
 
@@ -882,7 +1102,8 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const item = requireItem(workbench, body.itemId)
       void proposeOptions(workbench, item, body.force === true)
       sendJson(response, 200, { ok: true, item })
@@ -892,7 +1113,8 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const item = requireItem(workbench, body.itemId)
       if (typeof body.text !== 'string' || body.text.trim() === '') {
         throw new HttpError(400, 'invalid', '请先写下你的问题。')
@@ -905,7 +1127,8 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const item = requireItem(workbench, body.itemId)
       const status = typeof body.status === 'string' ? body.status : ''
       if (!['decided', 'unsure', 'deferred', 'unseen'].includes(status)) {
@@ -944,7 +1167,10 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      // Preview is read-only, so a history workbench may be summarised too.
+      const workbench = requireWorkbench(sessionId, body.workbenchId, root)
+      await refreshSourceState(workbench)
       sendJson(response, 200, {
         ok: true,
         digest: buildDigest(workbench),
@@ -957,7 +1183,8 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const digest = buildDigest(workbench)
       const agent = agentOf(sessionId)
       if (agent === undefined || typeof agent.followup !== 'function') {
@@ -983,9 +1210,8 @@ export function apply(ctx) {
       await ensureLoaded()
       const body = JSON.parse((await readBody(request)) || '{}')
       const sessionId = requireSessionId(body.sessionId)
-      const workbench = requireWorkbench(sessionId, body.workbenchId)
-      const agent = agentOf(sessionId)
-      const root = (await resolveWorkspace(agent)) ?? dirname(workbench.source.abs)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
       const targetDirectory = join(root, 'docs', 'decisions')
       if (!isPathInside(root, targetDirectory)) {
         throw new HttpError(400, 'outside-workspace', '决策记录目录不在当前工作区内。')
@@ -1017,6 +1243,21 @@ export function apply(ctx) {
         absolute: toPosixPath(target),
       })
     })
+
+    route('/resync', ['POST'], async (request, response) => {
+      await ensureLoaded()
+      const body = JSON.parse((await readBody(request)) || '{}')
+      const sessionId = requireSessionId(body.sessionId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
+      await resyncSource(workbench)
+      sendJson(response, 200, {
+        ok: true,
+        workbench,
+        staleItems: workbench.items.filter((item) => item.sourceStale === true).map((item) => item.id),
+        stats: countDecisions(workbench.items),
+      })
+    })
   }
 
   const webServer = ctx.get('webServer')
@@ -1041,8 +1282,10 @@ export function apply(ctx) {
 
     await ensureLoaded()
 
+    const workspaceRoot = normalizeWorkspacePath(root)
+
     if (parsed.mode === 'pick') {
-      setPending(sessionId, { mode: 'pick' })
+      setPending(sessionId, { mode: 'pick', workspaceRoot })
       return {
         kind: 'success',
         text: '决策工作台已打开。在右侧选择一份文档开始，或输入 /decision <文件名> 直接开始。',
@@ -1051,8 +1294,8 @@ export function apply(ctx) {
 
     try {
       const document = await resolveDocument(root, parsed.arg)
-      const workbench = await startFromDocument(sessionId, document)
-      setPending(sessionId, { mode: 'workbench', workbenchId: workbench.id })
+      const workbench = await startFromDocument(sessionId, document, root)
+      setPending(sessionId, { mode: 'workbench', workbenchId: workbench.id, workspaceRoot })
       return { kind: 'success', text: `正在打开决策工作台：${document.rel}` }
     } catch (error) {
       return { kind: 'error', text: describeError(error) }
