@@ -318,10 +318,19 @@ export function apply(ctx) {
   }
 
   async function resolveWorkspace(agent, signal) {
-    const direct = sessionOf(agent)?.header?.cwd
-    if (typeof direct === 'string' && direct !== '') return direct
+    const session = sessionOf(agent)
     const workingDirectory = ctx.get('workingDirectory')
     if (workingDirectory) {
+      // `workingDirectory` owns the Session's effective directory: the user can
+      // switch it after the session started. Read it before the immutable
+      // original `header.cwd`, otherwise a switched session keeps scanning its
+      // first workspace.
+      try {
+        const current = workingDirectory.get?.(session)
+        if (typeof current === 'string' && current !== '') return current
+      } catch {
+        // fall through to ensure
+      }
       // A fresh session may have no committed cwd yet; `ensure` resolves and
       // commits the deployment default so `/decision` works on a brand-new
       // session instead of failing with "no workspace".
@@ -331,15 +340,11 @@ export function apply(ctx) {
           if (typeof ensured === 'string' && ensured !== '') return ensured
         }
       } catch {
-        // fall through to the synchronous read
-      }
-      try {
-        const resolved = workingDirectory.get?.(sessionOf(agent))
-        if (typeof resolved === 'string' && resolved !== '') return resolved
-      } catch {
-        // fall through
+        // fall through to the original header
       }
     }
+    const direct = session?.header?.cwd
+    if (typeof direct === 'string' && direct !== '') return direct
     return undefined
   }
 
