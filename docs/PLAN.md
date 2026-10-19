@@ -1,8 +1,9 @@
 # dsh-decision-workbench · 项目计划
 
-> 状态：**M0 已初始化，M1（命令 + 面板 + 文件选择器）脚手架已落盘，功能尚未实现**
+> 状态：**M1 + M2 + M3 已实现并在 DSH Web 0.2.1-rc.2 实测；M4/M5 待做**
 > 宿主：DeepSeek Harness Web 0.2.x（当前 0.2.1-rc.2）
 > 设计基线：[INTERACTION.md](INTERACTION.md) · 交互方案全文
+> 实现说明：决策助手使用隔离的只读模型调用（`ctx.llm.stream`），不是带工具的子会话；见 5.4。
 
 ---
 
@@ -134,29 +135,38 @@
 | Host（`src/index.js`） | 注册 `/decision`；解析/校验文件；维护 open request 与工作台记录；提供 loopback JSON 路由；M2 创建决策助手子会话；M3 生成摘要并注入主会话 |
 | Client（`src/client.js`） | 注册右侧栏 Tab 类型与主体；监听 `/decision` 的 open request 并打开 Tab；文件选择器；M2 决策列表/详情/问答；M3 提交 |
 
-### 5.2 路由（M1 已实现）
+### 5.2 路由（M1–M3 已实现）
 
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | GET | `/dsh-decision-workbench/pending?sessionId=` | 取该会话的待打开请求 |
 | POST | `/dsh-decision-workbench/pending/ack` | 面板处理完后清除请求 |
 | GET | `/dsh-decision-workbench/files?sessionId=&query=` | 列出工作区候选文档 |
-| POST | `/dsh-decision-workbench/start` | `{ sessionId, path }` → 创建工作台（当前为脚手架记录） |
+| POST | `/dsh-decision-workbench/start` | `{ sessionId, path, restart? }` → 创建工作台并开始枚举 |
 | GET | `/dsh-decision-workbench/workbench?sessionId=` | 取该会话当前工作台 |
+| POST | `/dsh-decision-workbench/item` | 记录某题被打开 |
+| POST | `/dsh-decision-workbench/explain` | 懒生成单题解释（`force` 重试） |
+| POST | `/dsh-decision-workbench/options` | 无选项时补 2–4 个方案 |
+| POST | `/dsh-decision-workbench/ask` | 针对单题追问 |
+| POST | `/dsh-decision-workbench/decide` | 三态 / 清除本题决定 |
+| POST | `/dsh-decision-workbench/preview` | 生成摘要文本与统计 |
+| POST | `/dsh-decision-workbench/submit` | 摘要回写主会话 |
+| POST | `/dsh-decision-workbench/write` | 写 `docs/decisions/<日期>-<slug>.md` |
 
-所有路由 loopback + 同源校验。
+所有路由 loopback + 同源校验；模型调用 180 秒超时。
 
 ### 5.3 存储
 
-- M1：内存（进程重启丢失，仅用于脚手架）。
-- M2：`ctx.storageDomain` 持久化工作台、决策项、thread；子会话历史走 Session 日志；来源 hash 用于失效检测。
+- M1：内存（进程重启丢失）。
+- M2–M3：`$DSH_HOME/storages/dsh-decision-workbench/workbenches.json`，保留最近 16 个工作台；工作台、决策项、解释、追问 thread、决定全部落盘。来源 hash 已记录，失效提示留待 M4。
 
-### 5.4 决策助手（M2）
+### 5.4 决策助手（M2 实现）
 
-- 独立子会话，由 Host 创建（`ctx.subagents` / `ctx.agents`），不在主会话上下文里。
-- 初始上下文包：spec 决策相关片段（≤6k 字）+ 项目规则摘要（≤2k 字）+ 全量决策项 + 本工作台已做决定；不含主会话历史。
-- 只读：可读工作区文件；禁止写文件、执行命令；每次追问最多 3 次只读检索。
-- 懒生成：列表由主 agent/命令阶段给出；解释与缺失选项在打开某题时生成；完整解释再展开时生成。
+- 隔离的只读模型上下文：每次枚举 / 解释 / 补方案 / 追问都是一次独立 `ctx.llm.stream()` 调用。
+- 初始上下文包：文档片段（最多 60k 字，按题目 quote/行号截取相关段落）+ 本题 + 本工作台已做决定；**不含主会话历史**。
+- 只读：不写文件、不执行命令；回答中的引用由提示词要求带 `文件:行`。
+- 懒生成：列表一次生成；解释在打开某题时生成；缺失选项由用户点按钮触发生成；追问逐条生成。
+- 取舍：未使用带文件工具的子会话，换来更可控的上下文、更低的启动成本和更简单的失败重试；M4 可升级为子会话而不改面板接口。
 
 ### 5.5 摘要回写（M3）
 
@@ -223,67 +233,69 @@ interface Explanation {
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | **M0 初始化** | 项目骨架、bundle patch、locale、icon、README、计划与交互文档 | ✅ 完成 |
-| **M1 启动链路** | `/decision` 命令、open request、右侧栏 Tab、文件选择器、`/start` 占位工作台、测试 | 🟡 脚手架已落盘，待安装验证 |
-| **M2 决策清单** | 决策助手子会话、文档读取与决策枚举、列表/详情/解释懒加载、逐题追问 | ⬜ 未开始 |
-| **M3 决定与回写** | 选项/自定义/三态、摘要预览与提交、主会话注入、持久化 | ⬜ 未开始 |
-| **M4 收敛** | 来源变更同步、重复项合并、写入 DECISIONS.md、历史工作台 | ⬜ 未开始 |
+| **M1 启动链路** | `/decision` 命令、open request、右侧栏 Tab、文件选择器、`/start`、测试 | ✅ 完成并实测 |
+| **M2 决策清单** | 决策枚举、列表/详情/解释懒加载、无选项补方案、逐题追问 | ✅ 完成并实测 |
+| **M3 决定与回写** | 选项/自定义/三态、摘要预览与提交、主会话注入、持久化、写记录 | ✅ 完成并实测 |
+| **M4 收敛** | 来源变更同步、重复项合并、历史工作台、升级为带工具的子会话 | ⬜ 未开始 |
 | **M5 打磨** | 键盘/无障碍/窄屏/全屏、成本面板、性能与测试补齐 | ⬜ 未开始 |
 
 ---
 
 ## 8. 任务拆分（可直接执行）
 
-### M1（当前）
+### M1（完成）
 
 - [x] `package.json`（bundle patch + client web + engines.dsh）
 - [x] `cordis.patch.yml` 插入行
 - [x] `src/shared.js`：参数解析、扩展名、路径包含、posix 归一化
 - [x] `src/index.js`：命令、pending 队列、files/start/workbench 路由、loopback 校验
-- [x] `src/client.js`：Tab 类型、open request 监听、文件选择器、工作台壳
+- [x] `src/client.js`：Tab 类型、open request 监听、文件选择器
 - [x] locale / icon / README / CHANGELOG / LICENSE / .gitignore
-- [x] `test/shared.test.js`（6 项通过）
-- [ ] 安装到本地 profile 验证 `/decision` 能打开右侧栏（按 `F:/dsh-plugin` 约定 clone/link）
-- [ ] 验证 `/decision <filename>` 能跳过选择器直接进入工作台壳
-- [ ] 验证命令错误文案（无工作区、找不到、重名、越界、不支持格式）
+- [x] 安装到 `desktop` profile，右侧栏 Tab 类型注册进当前页面
+- [x] `/decision <filename>` 跳过选择器直接进入工作台并开始枚举
+- [x] 命令错误文案（无工作区、找不到、重名、越界、不支持格式）
 
-### M2
+### M2（完成）
 
-- [ ] Host：`/start` 读取文档、建决策助手子会话、注入上下文包
-- [ ] Host：决策枚举（全部决策项）与结构校验（标题/优先级/出处/已有选项）
-- [ ] Host：`/items`、`/explain`、`/ask` 路由或 Remote 流
-- [ ] Client：列表（分组/筛选/状态）、详情（解释卡/选项/推荐）
-- [ ] Client：问一问 thread、建议问法、`用这段理由` 回填
-- [ ] 懒加载与缓存；失败重试与空态
-- [ ] 存储落盘与重开恢复
+- [x] Host：`/start` 读取文档、调用默认模型、注入隔离上下文
+- [x] Host：决策枚举（标题/问题/章节/优先级/出处/来自 spec 的选项与推荐）与结构校验
+- [x] Host：`/explain`、`/options`、`/ask` 路由与失败重试
+- [x] Client：列表（优先级分组/筛选/进度）、详情（解释卡/选项/推荐/自定义/理由）
+- [x] Client：问一问 thread、建议问法
+- [x] 懒加载与缓存；失败重试与空态
+- [x] 存储落盘与重开恢复
 
-### M3
+### M3（完成）
 
-- [ ] 决定区三态、自动保存、撤销
-- [ ] 提交前校验（未决/拿不准二次确认）
-- [ ] 摘要生成、预览、注入主会话
-- [ ] 已提交状态与"继续追问"
-- [ ] 可选写入 `docs/decisions/<date>-<slug>.md`
+- [x] 决定区三态、自动保存、清除本题决定
+- [x] 提交前摘要预览与未定项提示
+- [x] 摘要生成、预览、注入主会话
+- [x] 已提交状态与继续追问
+- [x] 可选写入 `docs/decisions/<日期>-<slug>.md`
 
 ### M4/M5
 
 - [ ] 来源 hash 监控与重新同步
 - [ ] 重复决策检测与合并
-- [ ] 历史工作台（只读）
+- [ ] 历史工作台（只读浏览）
+- [ ] 决策助手升级为带文件工具的子会话（不改面板接口）
 - [ ] 键盘、无障碍、窄屏、全屏、深浅色检查
-- [ ] 测试补齐（命令解析、路由守卫、状态机）
+- [ ] 测试补齐（路由守卫、状态机、Client 组件）
 
 ---
 
 ## 9. 验收标准
 
 - `/decision` 在 1 秒内打开右侧栏，首屏是文件选择器且能列出工作区文档。
-- `/decision docs/spec.md` 跳过选择器直接进入工作台壳（M1）；M2 后 2 秒内列出全部决策项。
-- 打开任一题，3 秒内出现解释首段（流式）。
+- `/decision docs/spec.md` 跳过选择器直接进入工作台，通常 10–30 秒列出全部决策项（模型枚举）。
+- 打开任一题，通常 5–20 秒出现解释卡（轮询更新，非流式）。
 - 有选项时标"来自 spec"，无选项时可生成 2–4 个方案并给推荐。
 - 关闭/刷新/重启后进度不丢（M3 起）。
 - 未点"写入项目"前，工作区无任何文件被修改。
 - 未决与拿不准在摘要与主会话里显式保留，不被猜成已决。
 - 命令出错时文案说明"发生了什么 / 为什么 / 怎么办"。
+
+**实测（2026-10-19，DSH Web 0.2.1-rc.2）**：8 项枚举约 13 秒；解释约 15 秒；追问约 10 秒且路由立即返回、轮询收敛；无选项补方案、三态决定、摘要预览、写记录均通过；刷新/重载后工作台恢复。面板视觉与键盘操作需人工确认。
 
 ---
 
