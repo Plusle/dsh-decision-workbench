@@ -1,0 +1,12 @@
+# dsh-decision-workbench bundle patch.
+#
+# The host half registers the `/decision` command and the loopback-only
+# /dsh-decision-workbench/* routes; the browser half registers the right
+# sidebar tab type and the command listener.
+#
+# The entry name is the BARE package name on purpose: the client-module
+# scanner resolves `<name>/package.json`, so a subpath entry would be cached
+# as "not a client package" and the browser half would never load.
+- insert:
+    - id: dsh-decision-workbench
+      name: 'dsh-decision-workbench'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Decision Workbench",
+    "description": "Open a right-sidebar workbench from /decision, turn a spec's open decisions into per-question choices, ask an independent decision assistant, and send the decision digest back to the session."
+  }
+}
