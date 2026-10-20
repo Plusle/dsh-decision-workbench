@@ -6,6 +6,7 @@
 // verification covers manually.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 
 function fakeReact() {
   const pass = (value) => value
@@ -85,6 +86,11 @@ test('the client bundle loads and registers the tab + listener', async () => {
   assert.equal(dictionaryRegistration.namespace, 'dsh-decision-workbench')
   assert.ok(dictionaryRegistration.dictionaries.zh['tab.title'])
   assert.ok(dictionaryRegistration.dictionaries.en['tab.title'])
+  assert.ok(dictionaryRegistration.dictionaries.zh['digest.autoRead'])
+  assert.ok(dictionaryRegistration.dictionaries.en['digest.autoRead'])
+  assert.ok(dictionaryRegistration.dictionaries.zh['digest.resolution'])
+  assert.ok(dictionaryRegistration.dictionaries.zh['picker.searchHint'])
+  assert.ok(dictionaryRegistration.dictionaries.zh['history.deleteTitle'])
 
   assert.equal(tabTypes.length, 1)
   assert.equal(tabTypes[0].id, 'dsh-decision-workbench/workbench')
@@ -99,8 +105,28 @@ test('the client bundle loads and registers the tab + listener', async () => {
     'conversation.composer.dock',
   ])
   for (const entry of slotRegistrations) assert.equal(typeof entry.component, 'function')
-  // Dictionaries + tab type are the two ctx.effect registrations.
+  // Dictionaries + tab type.
   assert.deepEqual(effects, ['function', 'function'])
 
   delete globalThis.window
+})
+
+// `--dsw-alias-brand-primary` is an INK token: near-black in the light theme,
+// near-white in the dark one. It must never fill a primary button, and the
+// label must not be a hardcoded #fff, or the dark theme renders white-on-white.
+test('workbench deletion uses an in-panel confirmation, not a native dialog', async () => {
+  const source = await readFile(new URL('../src/client.js', import.meta.url), 'utf8')
+
+  assert.doesNotMatch(source, /window\.confirm/)
+  assert.match(source, /history\.deleteTitle/)
+  assert.match(source, /deleteTarget !== null/)
+})
+
+test('primary buttons use the themed filled-button pair', async () => {
+  const source = await readFile(new URL('../src/client.js', import.meta.url), 'utf8')
+
+  assert.match(source, /--dsw-alias-button-primary-fill/)
+  assert.match(source, /--dsw-alias-label-primary-foreground/)
+  assert.doesNotMatch(source, /background:\s*primary\s*\?\s*T\.brand\b/)
+  assert.doesNotMatch(source, /color:\s*primary\s*\?\s*'#ffffff'/)
 })

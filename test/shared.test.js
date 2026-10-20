@@ -3,9 +3,14 @@ import assert from 'node:assert/strict'
 
 import {
   DECISION_LIMIT,
+  buildAgentNotice,
+  buildCommandHint,
   buildDigest,
   buildExamplesPrompt,
   buildExplanationPrompt,
+  buildFinishNotice,
+  buildResolution,
+  buildStartNotice,
   countDecisions,
   decisionText,
   findStaleItems,
@@ -418,4 +423,103 @@ test('a stale source is noted in the digest', () => {
     items: [{ id: 'd1', title: '退款渠道', status: 'decided', priority: 'blocking', options: [{ id: 'o1', label: 'A' }], decision: { optionIds: ['o1'] }, source: { path: 'spec.md' } }],
   })
   assert.match(digest, /来源文档在该工作台打开后发生过变化/)
+})
+test('command result hints follow the locale', () => {
+  assert.match(buildCommandHint({ locale: 'zh', mode: 'pick' }), /决策工作台已打开/)
+  assert.match(buildCommandHint({ locale: 'en', mode: 'pick' }), /Decision Workbench opened/)
+  assert.match(
+    buildCommandHint({ locale: 'en', mode: 'file', path: 'docs/spec.md' }),
+    /Opening Decision Workbench: docs\/spec\.md/,
+  )
+  assert.match(
+    buildCommandHint({ locale: 'zh', mode: 'file', path: 'docs/spec.md' }),
+    /正在打开决策工作台：docs\/spec\.md/,
+  )
+})
+
+test('start and finish notices ask the session to acknowledge without acting', () => {
+  const start = buildStartNotice({ sourcePath: 'docs/spec.md', locale: 'zh' })
+  assert.match(start, /\[决策工作台\] 工作开始/)
+  assert.match(start, /输入文件：docs\/spec\.md/)
+  assert.match(start, /只回复“收到，等待结果”/)
+  assert.match(start, /不要开始实施/)
+
+  const finish = buildFinishNotice({
+    sourcePath: 'docs/spec.md',
+    resolutionPath: 'docs/decisions/2026-10-20-spec.md',
+    stats: { decided: 5, unsure: 1, deferred: 0, unseen: 2 },
+    locale: 'zh',
+  })
+  assert.match(finish, /\[决策工作台\] 工作完成/)
+  assert.match(finish, /结果文件：docs\/decisions\/2026-10-20-spec\.md/)
+  assert.match(finish, /已决定 5 \/ 拿不准 1 \/ 稍后 0 \/ 未处理 2/)
+  assert.match(finish, /不要读取结果文件/)
+  assert.match(finish, /等待用户下一步指令/)
+
+  const auto = buildFinishNotice({
+    sourcePath: 'docs/spec.md',
+    resolutionPath: 'docs/decisions/2026-10-20-spec.md',
+    stats: { decided: 1 },
+    autoRead: true,
+    locale: 'zh',
+  })
+  assert.match(auto, /请读取结果文件/)
+  assert.doesNotMatch(auto, /不要读取结果文件/)
+
+  const startEn = buildStartNotice({ sourcePath: 'docs/spec.md', locale: 'en' })
+  assert.match(startEn, /\[Decision Workbench\] Work started/)
+  assert.match(startEn, /Input file: docs\/spec\.md/)
+  assert.match(startEn, /Received, waiting for the result/)
+  assert.match(startEn, /do not start implementing/)
+
+  const finishEn = buildFinishNotice({
+    sourcePath: 'docs/spec.md',
+    resolutionPath: 'docs/decisions/2026-10-20-spec.md',
+    stats: { decided: 5, unsure: 1, deferred: 0, unseen: 2 },
+    locale: 'en',
+  })
+  assert.match(finishEn, /\[Decision Workbench\] Work completed/)
+  assert.match(finishEn, /Result file: docs\/decisions\/2026-10-20-spec\.md/)
+  assert.match(finishEn, /Stats: decided 5 \/ unsure 1 \/ deferred 0 \/ untouched 2/)
+  assert.match(finishEn, /Do not read the result file/)
+
+  const autoEn = buildFinishNotice({
+    sourcePath: 'docs/spec.md',
+    resolutionPath: 'docs/decisions/2026-10-20-spec.md',
+    stats: { decided: 1 },
+    autoRead: true,
+    locale: 'en',
+  })
+  assert.match(autoEn, /Please read the result file/)
+  assert.doesNotMatch(autoEn, /Do not read the result file/)
+})
+
+test('a notice reaches the session as a complete user message', () => {
+  const message = buildAgentNotice('[决策工作台] 工作开始', 'notice-1')
+  // The session log stores this object as-is and the provider rejects a request
+  // whose message lacks `role`, so both identifying fields are required.
+  assert.equal(message.role, 'user')
+  assert.equal(message.id, 'notice-1')
+  assert.deepEqual(message.content, [{ type: 'text', text: '[决策工作台] 工作开始' }])
+  assert.deepEqual(message.source, { kind: 'user' })
+})
+
+test('the resolution file wraps the digest with source and workbench metadata', () => {
+  const resolution = buildResolution(
+    {
+      id: 'dw_1',
+      title: '支付重构',
+      source: { path: 'docs/pay.md' },
+      items: [
+        { id: 'd1', title: '退款渠道', status: 'decided', priority: 'blocking', options: [{ id: 'o1', label: '微信原路退回' }], decision: { optionIds: ['o1'], rationale: '改动最小' }, source: { path: 'docs/pay.md', line: 3 } },
+      ],
+    },
+    { generatedAt: '2026-10-20 13:00' },
+  )
+  assert.match(resolution, /^# 决策结果：支付重构/m)
+  assert.match(resolution, /> 来源：`docs\/pay\.md`/)
+  assert.match(resolution, /> 完成时间：2026-10-20 13:00/)
+  assert.match(resolution, /> 工作台：dw_1/)
+  assert.match(resolution, /## 已决定（1 项）/)
+  assert.match(resolution, /微信原路退回/)
 })

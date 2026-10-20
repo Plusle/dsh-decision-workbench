@@ -32,6 +32,9 @@ window.__ModuleLoader__.load({
     const RETRY_OPEN_MS = 3000
     // Below this pane width the two-column workbench becomes list → detail.
     const SPLIT_MIN_WIDTH = 520
+    // Browser-local preference for the finish hand-off. Default is the safe
+    // one: notify the session with the result path, but do not read it yet.
+    const AUTO_READ_KEY = 'dsh-decision-workbench:auto-read'
 
     // --- copy -----------------------------------------------------------------
 
@@ -39,7 +42,8 @@ window.__ModuleLoader__.load({
       'tab.title': '决策工作台',
       'picker.title': '选择一份文档开始',
       'picker.hint': '会从当前工作区里找 Markdown / 文本类文档。也可以直接用 /decision <文件名> 开始。',
-      'picker.search': '搜索文件…',
+      'picker.search': '搜索相对路径或文件名…',
+      'picker.searchHint': '输入相对路径或文件名开始搜索，例如 docs/spec.md。',
       'picker.loading': '正在读取工作区…',
       'picker.empty': '工作区里没有找到可用的文档。',
       'picker.emptyQuery': '没有匹配的文件。',
@@ -110,20 +114,20 @@ window.__ModuleLoader__.load({
       'ask.suggest1': '这一项如果不决定会怎样？',
       'ask.suggest2': '两个方案最大的差别是什么？',
       'ask.suggest3': '业界通常怎么做？',
-      'digest.title': '决定摘要',
-      'digest.submit': '提交到主会话',
+      'digest.title': '完成决策工作台',
+      'digest.submit': '完成并生成结果',
       'digest.cancel': '返回',
       'digest.copy': '复制摘要',
       'digest.copied': '已复制',
-      'digest.write': '同时写入 docs/decisions/',
-      'digest.warning': '还有未定项（拿不准 / 稍后 / 未处理）。提交后主会话会看到它们仍待定，不会被猜测。',
-      'digest.submitting': '正在提交…',
-      'digest.submitted': '已提交到主会话',
+      'digest.autoRead': '完成后让主会话立即读取结果文件',
+      'digest.autoReadHint': '默认只通知结果路径，等待你的下一条指令；勾选后主会话会读取结果文件，但仍不应开始执行。',
+      'digest.warning': '还有未定项（拿不准 / 稍后 / 未处理）。结果文件会把它们标成待定，不会被猜测。',
+      'digest.submitting': '正在生成结果…',
+      'digest.submitted': '结果文件已生成',
+      'digest.resolution': '结果文件：',
+      'digest.notified': '主会话已收到通知，正在等待你的下一步指令。',
+      'digest.notNotified': '主会话当前不在运行，未能通知；结果文件已保存。',
       'digest.done': '完成',
-      'digest.noAgent': '主会话当前不在运行，无法回写。可以先复制摘要保存。',
-      'notice.submitted': '摘要已提交到主会话',
-      'notice.written': '决策记录已写入：',
-      'notice.writeFailed': '写入失败：',
       'notice.decideFailed': '保存决定失败：',
       'notice.submitFailed': '提交失败：',
       'notice.askFailed': '提问失败：',
@@ -160,6 +164,12 @@ window.__ModuleLoader__.load({
       'history.view': '查看',
       'history.continue': '继续',
       'history.current': '当前',
+      'history.delete': '删除',
+      'history.deleting': '删除中…',
+      'history.deleteTitle': '删除这个工作台？',
+      'history.deleteConfirm': '已做的决定、追问与生成的讲解会一起删除，无法恢复。',
+      'history.cancel': '取消',
+      'history.deleteFailed': '删除工作台失败：',
       'readOnly.banner': '历史工作台（只读）。可以查看已有的讲解、例子和决定；要修改请点「继续这个工作台」。',
       'readOnly.continue': '继续这个工作台',
       'readOnly.explainHint': '只读模式：继续这个工作台后才能生成讲解。',
@@ -173,7 +183,8 @@ window.__ModuleLoader__.load({
       'tab.title': 'Decision Workbench',
       'picker.title': 'Choose a document to start',
       'picker.hint': 'Looks for Markdown and text documents in the current workspace. You can also start with /decision <filename>.',
-      'picker.search': 'Search files…',
+      'picker.search': 'Search by relative path or file name…',
+      'picker.searchHint': 'Type a relative path or file name to search, e.g. docs/spec.md.',
       'picker.loading': 'Reading the workspace…',
       'picker.empty': 'No usable documents were found in the workspace.',
       'picker.emptyQuery': 'No matching files.',
@@ -244,20 +255,20 @@ window.__ModuleLoader__.load({
       'ask.suggest1': 'What happens if we do not decide this?',
       'ask.suggest2': 'What is the biggest difference between the options?',
       'ask.suggest3': 'What is the common practice here?',
-      'digest.title': 'Decision summary',
-      'digest.submit': 'Submit to main session',
+      'digest.title': 'Finish decision workbench',
+      'digest.submit': 'Finish and write result',
       'digest.cancel': 'Back',
       'digest.copy': 'Copy summary',
       'digest.copied': 'Copied',
-      'digest.write': 'Also write docs/decisions/',
-      'digest.warning': 'Some decisions are unresolved (unsure / later / untouched). The main session will see them as still open, never guessed.',
-      'digest.submitting': 'Submitting…',
-      'digest.submitted': 'Submitted to the main session',
+      'digest.autoRead': 'Let the main session read the result file immediately',
+      'digest.autoReadHint': 'By default the session only gets the result path and waits for your next request; when checked it reads the file, but still must not start implementing.',
+      'digest.warning': 'Some decisions are unresolved (unsure / later / untouched). The result file marks them as still open; they are never guessed.',
+      'digest.submitting': 'Writing the result…',
+      'digest.submitted': 'Result file written',
+      'digest.resolution': 'Result file: ',
+      'digest.notified': 'The main session was notified and is waiting for your next request.',
+      'digest.notNotified': 'The main session is not running, so it was not notified; the result file is saved.',
       'digest.done': 'Done',
-      'digest.noAgent': 'The main session is not running, so it cannot receive the summary. Copy it instead.',
-      'notice.submitted': 'Summary submitted to the main session',
-      'notice.written': 'Decision record written: ',
-      'notice.writeFailed': 'Write failed: ',
       'notice.decideFailed': 'Saving the decision failed: ',
       'notice.submitFailed': 'Submit failed: ',
       'notice.askFailed': 'Ask failed: ',
@@ -294,6 +305,12 @@ window.__ModuleLoader__.load({
       'history.view': 'View',
       'history.continue': 'Continue',
       'history.current': 'Current',
+      'history.delete': 'Delete',
+      'history.deleting': 'Deleting…',
+      'history.deleteTitle': 'Delete this workbench?',
+      'history.deleteConfirm': 'Its decisions, follow-ups and generated explanations will be removed permanently.',
+      'history.cancel': 'Cancel',
+      'history.deleteFailed': 'Deleting the workbench failed: ',
       'readOnly.banner': 'Previous workbench (read-only). Existing explanations, examples and decisions are visible; press “Continue this workbench” to edit.',
       'readOnly.continue': 'Continue this workbench',
       'readOnly.explainHint': 'Read-only: continue this workbench to generate an explanation.',
@@ -312,7 +329,13 @@ window.__ModuleLoader__.load({
       overlay: 'var(--dsw-alias-bg-overlay)',
       border: 'var(--dsw-alias-border-l1)',
       borderStrong: 'var(--dsw-alias-border-l2)',
+      // `brand-primary` is an INK token (near-black in the light theme,
+      // near-white in the dark one), so it can never fill a button. Filled
+      // controls use the host's primary button pair; the foreground token
+      // keeps the label readable in both themes.
       brand: 'var(--dsw-alias-brand-primary)',
+      brandFill: 'var(--dsw-alias-button-primary-fill, #4f6ef7)',
+      onBrand: 'var(--dsw-alias-label-primary-foreground, #ffffff)',
       primary: 'var(--dsw-alias-label-primary)',
       secondary: 'var(--dsw-alias-label-secondary)',
       error: 'var(--dsw-alias-state-error-primary)',
@@ -360,10 +383,11 @@ window.__ModuleLoader__.load({
       return {
         padding: small ? '4px 9px' : '6px 12px',
         borderRadius: 7,
-        border: `1px solid ${primary ? T.brand : T.border}`,
-        background: primary ? T.brand : 'transparent',
-        color: primary ? '#ffffff' : T.primary,
+        border: `1px solid ${primary ? T.brandFill : T.border}`,
+        background: primary ? T.brandFill : 'transparent',
+        color: primary ? T.onBrand : T.primary,
         font: 'inherit',
+        fontWeight: primary ? 500 : 400,
         fontSize: small ? 12 : 13,
         lineHeight: 1.45,
         cursor: 'pointer',
@@ -605,23 +629,32 @@ window.__ModuleLoader__.load({
 
     function FilePicker(props) {
       const [query, setQuery] = React.useState('')
-      const [files, setFiles] = React.useState(null)
+      const [files, setFiles] = React.useState([])
       const [error, setError] = React.useState('')
       const [busy, setBusy] = React.useState('')
       const [resume, setResume] = React.useState(null)
       const [history, setHistory] = React.useState(null)
       const [reloadKey, setReloadKey] = React.useState(0)
+      const [deleting, setDeleting] = React.useState('')
+      const [deleteTarget, setDeleteTarget] = React.useState(null)
       const t = props.t
 
       React.useEffect(() => {
+        const search = query.trim()
+        if (search === '') {
+          setFiles([])
+          setError('')
+          return undefined
+        }
         let cancelled = false
+        setFiles(null)
         const timer = setTimeout(async () => {
           try {
             const data = await fetchJson(
-              `/files?sessionId=${encodeURIComponent(props.sessionId)}&query=${encodeURIComponent(query)}`,
+              `/files?sessionId=${encodeURIComponent(props.sessionId)}&query=${encodeURIComponent(search)}`,
             )
             if (!cancelled) {
-              setFiles(data.files)
+              setFiles(Array.isArray(data.files) ? data.files : [])
               setError('')
             }
           } catch (failure) {
@@ -641,13 +674,13 @@ window.__ModuleLoader__.load({
         let cancelled = false
         fetchJson(`/workbench?sessionId=${encodeURIComponent(props.sessionId)}`)
           .then((data) => {
-            if (!cancelled && data.workbench) setResume(data.workbench)
+            if (!cancelled) setResume(data.workbench || null)
           })
           .catch(() => {})
         return () => {
           cancelled = true
         }
-      }, [props.sessionId])
+      }, [props.sessionId, reloadKey])
 
       // History is scoped server-side to this session AND this workspace; the
       // picker only ever renders what the host already decided it may see.
@@ -675,6 +708,32 @@ window.__ModuleLoader__.load({
           setError(String(failure.message || failure))
         } finally {
           setBusy('')
+        }
+      }
+
+      React.useEffect(() => {
+        if (deleteTarget === null) return undefined
+        const onKey = (event) => {
+          if (event.key === 'Escape' && deleting === '') setDeleteTarget(null)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [deleteTarget, deleting])
+
+      const removeWorkbench = async (entry) => {
+        if (!entry || deleting !== '') return
+        setDeleteTarget(null)
+        setDeleting(entry.id)
+        try {
+          await postJson('/delete', { sessionId: props.sessionId, workbenchId: entry.id })
+          setHistory((previous) => (Array.isArray(previous) ? previous.filter((item) => item.id !== entry.id) : previous))
+          setResume((previous) => (previous && previous.id === entry.id ? null : previous))
+          setError('')
+          setReloadKey((key) => key + 1)
+        } catch (failure) {
+          setError(`${t('history.deleteFailed')}${String(failure.message || failure)}`)
+        } finally {
+          setDeleting('')
         }
       }
 
@@ -713,8 +772,18 @@ window.__ModuleLoader__.load({
                   : null,
                 h(
                   'div',
-                  { style: { display: 'flex', gap: 8, marginTop: 2 } },
+                  { style: { display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' } },
                   h('button', { type: 'button', style: buttonStyle(true, true), onClick: () => props.onStarted(resume) }, t('picker.resumeContinue')),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      style: { ...buttonStyle(false, true), color: T.error, borderColor: T.error },
+                      disabled: deleting !== '',
+                      onClick: () => setDeleteTarget(resume),
+                    },
+                    deleting === resume.id ? t('history.deleting') : t('history.delete'),
+                  ),
                 ),
               )
             : null,
@@ -737,6 +806,7 @@ window.__ModuleLoader__.load({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
+                        flexWrap: 'wrap',
                         paddingTop: 5,
                         borderTop: `1px solid ${T.border}`,
                       },
@@ -776,6 +846,16 @@ window.__ModuleLoader__.load({
                       },
                       t('history.continue'),
                     ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        style: { ...buttonStyle(false, true), color: T.error, borderColor: T.error },
+                        disabled: deleting !== '',
+                        onClick: () => setDeleteTarget(entry),
+                      },
+                      deleting === entry.id ? t('history.deleting') : t('history.delete'),
+                    ),
                   ),
                 ),
               )
@@ -810,8 +890,8 @@ window.__ModuleLoader__.load({
             : files.length === 0
               ? h(
                   'div',
-                  { style: { color: T.secondary, padding: '8px 6px' } },
-                  query === '' ? t('picker.empty') : t('picker.emptyQuery'),
+                  { style: { color: T.secondary, padding: '8px 6px', lineHeight: 1.6 } },
+                  query.trim() === '' ? t('picker.searchHint') : t('picker.emptyQuery'),
                 )
               : h(
                   'ul',
@@ -872,6 +952,76 @@ window.__ModuleLoader__.load({
                   ),
                 ),
         ),
+        deleteTarget !== null
+          ? h(
+              'div',
+              {
+                role: 'presentation',
+                style: {
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 20,
+                  background: 'rgba(0,0,0,0.32)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 12,
+                },
+              },
+              h(
+                'div',
+                {
+                  role: 'dialog',
+                  'aria-modal': 'true',
+                  'aria-label': t('history.deleteTitle'),
+                  style: {
+                    width: '100%',
+                    maxWidth: 420,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    background: T.overlay,
+                    color: T.primary,
+                    border: `1px solid ${T.borderStrong}`,
+                    borderRadius: 12,
+                    padding: 14,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.28)',
+                  },
+                },
+                h('div', { style: { fontSize: 15, fontWeight: 600 } }, t('history.deleteTitle')),
+                h(
+                  'div',
+                  { style: { fontSize: 12, color: T.secondary, wordBreak: 'break-all', lineHeight: 1.55 } },
+                  deleteTarget.source?.path || deleteTarget.id || '',
+                ),
+                h('div', { style: { fontSize: 12, lineHeight: 1.6 } }, t('history.deleteConfirm')),
+                h(
+                  'div',
+                  { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' } },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      style: buttonStyle(false, true),
+                      disabled: deleting !== '',
+                      onClick: () => setDeleteTarget(null),
+                    },
+                    t('history.cancel'),
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      style: { ...buttonStyle(false, true), background: T.error, borderColor: T.error, color: T.onBrand },
+                      disabled: deleting !== '',
+                      onClick: () => removeWorkbench(deleteTarget),
+                    },
+                    deleting === deleteTarget.id ? t('history.deleting') : t('history.delete'),
+                  ),
+                ),
+              ),
+            )
+          : null,
       )
     }
 
@@ -1454,21 +1604,29 @@ window.__ModuleLoader__.load({
     function DigestModal(props) {
       const t = props.t
       const stats = props.stats || {}
-      const [writeWanted, setWriteWanted] = React.useState(false)
+      const [autoRead, setAutoRead] = React.useState(() => {
+        try {
+          return window.localStorage.getItem(AUTO_READ_KEY) === '1'
+        } catch {
+          return false
+        }
+      })
       const [submitting, setSubmitting] = React.useState(false)
       const [error, setError] = React.useState('')
       const [done, setDone] = React.useState(false)
-      const [writePath, setWritePath] = React.useState('')
-      const [writeError, setWriteError] = React.useState('')
+      const [resolutionPath, setResolutionPath] = React.useState('')
+      const [notified, setNotified] = React.useState(false)
       const [copied, setCopied] = React.useState(false)
 
       React.useEffect(() => {
         const onKey = (event) => {
-          if (event.key === 'Escape' && !submitting) props.onClose()
+          if (event.key !== 'Escape' || submitting) return
+          if (done) props.onFinish()
+          else props.onClose()
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [props.onClose, submitting])
+      }, [done, props.onClose, props.onFinish, submitting])
 
       const copy = async () => {
         try {
@@ -1485,21 +1643,29 @@ window.__ModuleLoader__.load({
         setSubmitting(true)
         setError('')
         try {
-          const data = await postJson('/submit', { sessionId: props.sessionId, workbenchId: props.workbenchId })
+          const data = await postJson('/submit', {
+            sessionId: props.sessionId,
+            workbenchId: props.workbenchId,
+            autoRead,
+            locale: props.localeId || '',
+          })
           setDone(true)
-          props.onSubmitted(data.workbench)
-          if (writeWanted) {
-            try {
-              const written = await postJson('/write', { sessionId: props.sessionId, workbenchId: props.workbenchId })
-              setWritePath(written.path)
-            } catch (failure) {
-              setWriteError(String(failure.message || failure))
-            }
-          }
+          setResolutionPath(typeof data.path === 'string' ? data.path : '')
+          setNotified(data.notified === true)
         } catch (failure) {
           setError(String(failure.message || failure))
         } finally {
           setSubmitting(false)
+        }
+      }
+
+      const toggleAutoRead = (event) => {
+        const next = event.target.checked
+        setAutoRead(next)
+        try {
+          window.localStorage.setItem(AUTO_READ_KEY, next ? '1' : '0')
+        } catch {
+          // The preference is optional; the safer default still applies.
         }
       }
 
@@ -1545,7 +1711,9 @@ window.__ModuleLoader__.load({
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             h('span', { style: { fontSize: 15, fontWeight: 600, flex: 1 } }, t('digest.title')),
-            h('button', { type: 'button', style: buttonStyle(false, true), onClick: props.onClose, disabled: submitting }, t('digest.cancel')),
+            done
+              ? null
+              : h('button', { type: 'button', style: buttonStyle(false, true), onClick: props.onClose, disabled: submitting }, t('digest.cancel')),
           ),
           h(
             'div',
@@ -1583,12 +1751,18 @@ window.__ModuleLoader__.load({
                 'div',
                 { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
                 h('div', { style: { color: T.success, display: 'flex', alignItems: 'center', gap: 6 } }, h('span', null, '✓'), t('digest.submitted')),
-                writePath !== '' ? h('div', { style: { fontSize: 12, color: T.secondary } }, `${t('notice.written')}${writePath}`) : null,
-                writeError !== '' ? h('div', { style: { fontSize: 12, color: T.error } }, `${t('notice.writeFailed')}${writeError}`) : null,
+                resolutionPath !== ''
+                  ? h('div', { style: { fontSize: 12, color: T.secondary, wordBreak: 'break-all', lineHeight: 1.55 } }, `${t('digest.resolution')}${resolutionPath}`)
+                  : null,
+                h(
+                  'div',
+                  { style: { fontSize: 12, color: notified ? T.secondary : T.warn, lineHeight: 1.55 } },
+                  notified ? t('digest.notified') : t('digest.notNotified'),
+                ),
                 h(
                   'div',
                   { style: { display: 'flex', justifyContent: 'flex-end' } },
-                  h('button', { type: 'button', style: buttonStyle(true), onClick: props.onClose }, t('digest.done')),
+                  h('button', { type: 'button', style: buttonStyle(true), onClick: props.onFinish }, t('digest.done')),
                 ),
               )
             : h(
@@ -1597,14 +1771,16 @@ window.__ModuleLoader__.load({
                 error !== '' ? h('div', { style: { color: T.error, fontSize: 12, lineHeight: 1.55 } }, error) : null,
                 h(
                   'label',
-                  { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.secondary, cursor: 'pointer' } },
+                  { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: T.primary, cursor: 'pointer' } },
                   h('input', {
                     type: 'checkbox',
-                    checked: writeWanted,
-                    onChange: (event) => setWriteWanted(event.target.checked),
+                    checked: autoRead,
+                    disabled: submitting,
+                    onChange: toggleAutoRead,
                   }),
-                  t('digest.write'),
+                  t('digest.autoRead'),
                 ),
+                h('div', { style: { fontSize: 11, color: T.secondary, lineHeight: 1.5 } }, t('digest.autoReadHint')),
                 h(
                   'div',
                   { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' } },
@@ -1642,6 +1818,7 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState('')
       const [width, setWidth] = React.useState(0)
       const rootRef = React.useRef(null)
+      const startNoticeRef = React.useRef('')
 
       React.useEffect(() => {
         const element = rootRef.current
@@ -1695,6 +1872,24 @@ window.__ModuleLoader__.load({
           // polling is best effort
         }
       }, [query, applyRemote])
+
+      // The host has no reliable view of a browser-derived locale, so the
+      // panel sends the start notice once it knows the active locale. Only
+      // newly created workbenches (startNotified === false) are announced;
+      // restored/older records are not.
+      React.useEffect(() => {
+        if (!workbench || props.readOnly === true) return
+        if (workbench.startNotified !== false) return
+        if (startNoticeRef.current === workbench.id) return
+        startNoticeRef.current = workbench.id
+        postJson('/start-notice', {
+          sessionId,
+          workbenchId: workbench.id,
+          locale: props.localeId || '',
+        }).catch(() => {
+          startNoticeRef.current = ''
+        })
+      }, [workbench && workbench.id, workbench && workbench.startNotified, props.readOnly, props.localeId, sessionId])
 
       React.useEffect(() => {
         if (props.active === false) return undefined
@@ -2433,11 +2628,13 @@ window.__ModuleLoader__.load({
                 t,
                 sessionId,
                 workbenchId: workbench.id,
+                localeId: props.localeId,
                 digest: digest.text,
                 stats: digest.stats,
                 onClose: () => setDigest(null),
-                onSubmitted: (nextWorkbench) => {
-                  if (nextWorkbench) setWorkbench(nextWorkbench)
+                onFinish: () => {
+                  setDigest(null)
+                  props.onFinished()
                 },
               })
             : null,
@@ -2483,12 +2680,38 @@ window.__ModuleLoader__.load({
 
       const active = !info || !info.tab || info.tab.visible !== false
       const sessionId = props.sessionId
+      const activeLocaleId = (() => {
+        try {
+          const snapshot = props.locale && typeof props.locale.getSnapshot === 'function' ? props.locale.getSnapshot() : null
+          return snapshot && typeof snapshot.active === 'string' ? snapshot.active : ''
+        } catch {
+          return ''
+        }
+      })()
 
       const openHistory = (id, viewOnly) => {
         setStarted(null)
         setWorkbenchId(id)
         setReadOnly(viewOnly === true)
         setMode('workbench')
+      }
+
+      // Finishing deletes the workbench on the host. Return this tab to the
+      // picker first (the fallback if close is unavailable), then close it: a
+      // finished workbench must not remain as a stale tab.
+      const finishWorkbench = () => {
+        const tabId = info && info.tab && info.tab.id ? info.tab.id : ''
+        setStarted(null)
+        setWorkbenchId('')
+        setReadOnly(false)
+        setMode('pick')
+        if (tabId !== '' && typeof props.closeTab === 'function') {
+          try {
+            props.closeTab(tabId)
+          } catch {
+            // The picker fallback above is enough if the tab was already gone.
+          }
+        }
       }
 
       const content =
@@ -2501,6 +2724,8 @@ window.__ModuleLoader__.load({
               initialWorkbench: started,
               readOnly,
               active,
+              localeId: activeLocaleId,
+              onFinished: finishWorkbench,
               onChooseAnother: () => {
                 setStarted(null)
                 setMode('pick')
@@ -2540,7 +2765,12 @@ window.__ModuleLoader__.load({
 
       ctx.slots.inject('sidebar.right.pane.tab', () =>
         ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, (props) =>
-          h(TabBody, { ...props, t, locale: ctx.get('locale') }),
+          h(TabBody, {
+            ...props,
+            t,
+            locale: ctx.get('locale'),
+            closeTab: (id) => ctx.sidebarRight.close(id),
+          }),
         ),
       )
 

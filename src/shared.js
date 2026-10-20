@@ -832,6 +832,108 @@ export function buildDigest(workbench) {
   return lines.join('\n')
 }
 
+// --- session hand-off --------------------------------------------------------
+
+/** The command result shown in the composer after `/decision` runs. */
+export function buildCommandHint({ locale = 'en', mode = 'pick', path = '' } = {}) {
+  const isZh = String(locale ?? '').toLowerCase().startsWith('zh')
+  if (mode === 'file') {
+    return isZh ? `正在打开决策工作台：${path}` : `Opening Decision Workbench: ${path}`
+  }
+  return isZh
+    ? '决策工作台已打开。在右侧选择一份文档开始，或输入 /decision <文件名> 直接开始。'
+    : 'Decision Workbench opened. Choose a document in the right sidebar, or run /decision <filename> to start directly.'
+}
+
+/**
+ * Sent when a workbench starts. The main session must keep its hands off the
+ * project until the workbench produces its resolution file: the user is still
+ * making the decisions in the sidebar.
+ */
+export function buildStartNotice({ sourcePath, locale = 'en' }) {
+  if (String(locale ?? '').toLowerCase().startsWith('zh')) {
+    return [
+      '[决策工作台] 工作开始',
+      `输入文件：${sourcePath || '（未知文档）'}`,
+      '用户正在右侧工作台逐项做决定，结果尚未生成。',
+      '请只回复“收到，等待结果”。不要读取、修改或执行任何文件，也不要开始实施或制定计划；等待用户下一步指令。',
+    ].join('\n')
+  }
+  return [
+    '[Decision Workbench] Work started',
+    `Input file: ${sourcePath || '(unknown document)'}`,
+    'The user is making decisions item by item in the right-hand workbench; no result has been generated yet.',
+    'Please reply only "Received, waiting for the result". Do not read, modify, or execute any files, and do not start implementing or planning; wait for the user\'s next instruction.',
+  ].join('\n')
+}
+
+/**
+ * Sent when the workbench has written its resolution file. By default the
+ * session is told not to read it yet; "autoRead" flips that one instruction
+ * while still forbidding implementation work.
+ */
+export function buildFinishNotice({ sourcePath, resolutionPath, stats = {}, autoRead = false, locale = 'en' }) {
+  if (String(locale ?? '').toLowerCase().startsWith('zh')) {
+    return [
+      '[决策工作台] 工作完成',
+      `输入文件：${sourcePath || '（未知文档）'}`,
+      `结果文件：${resolutionPath || '（未写入）'}`,
+      `统计：已决定 ${stats.decided || 0} / 拿不准 ${stats.unsure || 0} / 稍后 ${stats.deferred || 0} / 未处理 ${stats.unseen || 0}`,
+      autoRead
+        ? '请读取结果文件，然后只回复“收到”。不要开始执行、修改文件或制定计划；等待用户下一步指令。'
+        : '请只回复“收到”。不要读取结果文件，也不要开始执行、修改文件或制定计划；等待用户下一步指令。',
+    ].join('\n')
+  }
+  return [
+    '[Decision Workbench] Work completed',
+    `Input file: ${sourcePath || '(unknown document)'}`,
+    `Result file: ${resolutionPath || '(not written)'}`,
+    `Stats: decided ${stats.decided || 0} / unsure ${stats.unsure || 0} / deferred ${stats.deferred || 0} / untouched ${stats.unseen || 0}`,
+    autoRead
+      ? 'Please read the result file, then reply only "Received". Do not start executing, modify files, or make plans; wait for the user\'s next instruction.'
+      : 'Please reply only "Received". Do not read the result file, and do not start executing, modify files, or make plans; wait for the user\'s next instruction.',
+  ].join('\n')
+}
+
+/**
+ * Wrap notice text in the complete user message `agent.followup` expects.
+ *
+ * The agent stores the object it receives as the session's user message, and
+ * both the session log and the provider request require `role` (and the
+ * provider rejects the whole request when it is missing). Passing only
+ * `content`/`source` therefore poisons the transcript: that turn fails with
+ * "missing field `role`" and so does every later turn. Callers supply a fresh
+ * id so the same notice is never recorded twice as one message.
+ */
+export function buildAgentNotice(text, id) {
+  return {
+    role: 'user',
+    id,
+    content: [{ type: 'text', text }],
+    source: { kind: 'user' },
+  }
+}
+
+/**
+ * The durable output of a workbench: a self-contained Markdown decision record
+ * next to the project's other decision documents. The workbench itself is
+ * removed after this file is written.
+ */
+export function buildResolution(workbench, options = {}) {
+  const record = workbench && typeof workbench === 'object' ? workbench : { items: [] }
+  const sourcePath = record.source && record.source.path ? record.source.path : '（未知文档）'
+  const title = record.title || sourcePath
+  const lines = [
+    `# 决策结果：${title}`,
+    '',
+    `> 来源：\`${sourcePath}\``,
+  ]
+  if (options.generatedAt) lines.push(`> 完成时间：${options.generatedAt}`)
+  if (record.id) lines.push(`> 工作台：${record.id}`)
+  lines.push('', buildDigest(record), '')
+  return lines.join('\n')
+}
+
 // --- misc --------------------------------------------------------------------
 
 export function countByStatus(items = []) {

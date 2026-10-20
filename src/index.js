@@ -10,8 +10,8 @@
 //     in an isolated analysis context (no main-conversation history);
 //   * lazily explain one item, propose options when the spec has none, and
 //     answer per-question follow-ups;
-//   * build the decision digest and inject it back into the main session;
-//   * keep workbenches across panel close / page reload / Harness restart.
+//   * write the decision resolution file and notify the main session;
+//   * keep unfinished workbenches across panel close / page reload / restart.
 //
 // The module imports nothing from the DSH SDK: `commands`, `webServer`, `llm`,
 // `agents` and `agentDefaultModel` are resolved through the Cordis context, so
@@ -28,12 +28,17 @@ import {
   MAX_QUESTION_CHARS,
   PLUGIN_ID,
   ROUTE_PREFIX,
+  buildAgentNotice,
   buildAskPrompt,
+  buildCommandHint,
   buildDigest,
   buildEnumerationPrompt,
   buildExamplesPrompt,
   buildExplanationPrompt,
+  buildFinishNotice,
   buildOptionsPrompt,
+  buildResolution,
+  buildStartNotice,
   clampText,
   countDecisions,
   findStaleItems,
@@ -59,9 +64,43 @@ import {
 // second, so this only protects against a request that arrives while no client
 // is attached (for example, a command run from a second window).
 const PENDING_TTL_MS = 60_000
-const FILE_LIST_LIMIT = 200
-const FILE_SCAN_DEPTH = 6
-const SKIP_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage', '.cache'])
+const FILE_LIST_LIMIT = 60
+const FILE_SCAN_DEPTH = 8
+const FILE_SCAN_BUDGET_MS = 150
+const FILE_INDEX_LIMIT = 4_000
+const FILE_INDEX_BUDGET_MS = 300
+const FILE_INDEX_TTL_MS = 30_000
+const SKIP_DIRECTORIES = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.cache',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.turbo',
+  'target',
+  'vendor',
+  'obj',
+  'bin',
+  '.venv',
+  'venv',
+  'env',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.idea',
+  '.vscode',
+  'logs',
+  'tmp',
+  'temp',
+])
+/** root -> { at, files } so name-only searches do not re-walk the tree per keystroke. */
+const fileIndexCache = new Map()
 const BODY_LIMIT_BYTES = 64 * 1024
 const MODEL_TIMEOUT_MS = 180_000
 const STORAGE_LIMIT = 16
@@ -72,6 +111,13 @@ class HttpError extends Error {
     this.status = status
     this.code = code
   }
+}
+
+// A finished workbench is represented by its resolution file, not by the
+// in-memory record. Older versions kept `submitted` records around; they stay
+// in the store for audit but are no longer offered as resumable work.
+function isOpenWorkbench(record) {
+  return Boolean(record) && record.status !== 'submitted'
 }
 
 // --- HTTP helpers -------------------------------------------------------------
@@ -169,6 +215,14 @@ async function isFile(path) {
   }
 }
 
+async function isDirectory(path) {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 /**
  * Find a document by basename when the exact relative path misses, so
  * `/decision payment-spec.md` works without spelling the whole directory.
@@ -232,50 +286,112 @@ async function resolveDocument(root, rawArg) {
   throw new HttpError(404, 'not-found', `没找到“${cleaned}”。可以运行 /decision 打开面板选择，或检查文件名。`)
 }
 
-async function listDocuments(root, query) {
-  const needle = String(query ?? '').trim().toLowerCase()
-  const files = []
+function documentEntry(rel, name) {
+  const directory = toPosixPath(dirname(rel))
+  return { path: rel, name, dir: directory === '.' ? '' : directory }
+}
 
-  async function walk(directory, depth) {
-    if (files.length >= FILE_LIST_LIMIT || depth > FILE_SCAN_DEPTH) return
+async function walkDocumentFiles(startDir, root, options, onFile) {
+  const stack = [{ dir: startDir, depth: 0 }]
+  let seen = 0
+  while (stack.length > 0) {
+    if (Date.now() > options.deadline || seen >= options.limit) return
+    const current = stack.pop()
     let entries
     try {
-      entries = await readdir(directory, { withFileTypes: true })
+      entries = await readdir(current.dir, { withFileTypes: true })
     } catch {
-      return
+      continue
     }
     for (const entry of entries) {
-      if (files.length >= FILE_LIST_LIMIT) return
+      if (Date.now() > options.deadline || seen >= options.limit) return
       if (entry.name.startsWith('.')) continue
-      const path = join(directory, entry.name)
+      const path = join(current.dir, entry.name)
       if (entry.isDirectory()) {
-        if (SKIP_DIRECTORIES.has(entry.name)) continue
-        await walk(path, depth + 1)
+        if (SKIP_DIRECTORIES.has(entry.name) || current.depth >= options.maxDepth) continue
+        stack.push({ dir: path, depth: current.depth + 1 })
         continue
       }
       if (!entry.isFile() || !isDocumentPath(entry.name)) continue
       const rel = toPosixPath(relative(root, path))
-      if (needle !== '' && !rel.toLowerCase().includes(needle)) continue
-      let info
-      try {
-        info = await stat(path)
-      } catch {
-        continue
-      }
-      files.push({
-        path: rel,
-        name: entry.name,
-        dir: toPosixPath(dirname(rel)) === '.' ? '' : toPosixPath(dirname(rel)),
-        size: info.size,
-        mtime: info.mtimeMs,
-      })
-      if (files.length >= FILE_LIST_LIMIT) return
+      seen += 1
+      if (onFile(documentEntry(rel, entry.name)) === false) return
+    }
+  }
+}
+
+function cachedFileIndex(root) {
+  const entry = fileIndexCache.get(root)
+  if (entry === undefined || Date.now() - entry.at > FILE_INDEX_TTL_MS) return undefined
+  return entry.files
+}
+
+async function buildFileIndex(root) {
+  const files = []
+  await walkDocumentFiles(
+    root,
+    root,
+    { maxDepth: FILE_SCAN_DEPTH, deadline: Date.now() + FILE_INDEX_BUDGET_MS, limit: FILE_INDEX_LIMIT },
+    (file) => {
+      files.push(file)
+      return true
+    },
+  )
+  fileIndexCache.set(root, { at: Date.now(), files })
+  if (fileIndexCache.size > 8) {
+    const oldest = fileIndexCache.keys().next().value
+    if (oldest !== undefined) fileIndexCache.delete(oldest)
+  }
+  return files
+}
+
+function matchScore(rel, name, needle) {
+  const lower = rel.toLowerCase()
+  if (lower === needle) return 0
+  if (lower.startsWith(needle)) return 1
+  const base = name.toLowerCase()
+  if (base === needle || base.startsWith(needle)) return 2
+  return 3
+}
+
+function orderMatches(files, needle) {
+  return files.sort((left, right) => {
+    const byScore = matchScore(left.path, left.name, needle) - matchScore(right.path, right.name, needle)
+    if (byScore !== 0) return byScore
+    if (left.path.length !== right.path.length) return left.path.length - right.path.length
+    return left.path.localeCompare(right.path)
+  })
+}
+
+async function listDocuments(root, query) {
+  const needle = String(query ?? '').trim().toLowerCase().replace(/\\/g, '/')
+  // An empty query is not a listing request. Walking a large project just to
+  // fill the picker is both slow and noisy; the client asks for a relative path.
+  if (needle === '') return []
+
+  const slash = needle.lastIndexOf('/')
+  if (slash >= 0) {
+    const prefix = needle.slice(0, slash)
+    const start = prefix === '' ? root : resolve(root, prefix)
+    if (isPathInside(root, start) && (await isDirectory(start))) {
+      const matches = []
+      await walkDocumentFiles(
+        start,
+        root,
+        { maxDepth: FILE_SCAN_DEPTH, deadline: Date.now() + FILE_SCAN_BUDGET_MS, limit: FILE_INDEX_LIMIT },
+        (file) => {
+          if (!file.path.toLowerCase().includes(needle)) return true
+          matches.push(file)
+          return matches.length < FILE_LIST_LIMIT
+        },
+      )
+      return orderMatches(matches.slice(0, FILE_LIST_LIMIT), needle)
     }
   }
 
-  await walk(root, 0)
-  files.sort((left, right) => right.mtime - left.mtime)
-  return files
+  const index = cachedFileIndex(root) ?? (await buildFileIndex(root))
+  const matches = index.filter((file) => file.path.toLowerCase().includes(needle))
+  return orderMatches(matches.slice(0, FILE_LIST_LIMIT), needle)
 }
 
 function hashText(text) {
@@ -385,6 +501,7 @@ export function apply(ctx) {
       // exposing them would be exactly the cross-workspace leak this guards.
       if (typeof record.workspaceRoot !== 'string' || record.workspaceRoot === '') continue
       workbenches.set(record.id, record)
+      if (!isOpenWorkbench(record)) continue
       const key = scopeKey(record.sessionId, record.workspaceRoot)
       const currentId = activeByScope.get(key)
       const current = currentId === undefined ? undefined : workbenches.get(currentId)
@@ -469,6 +586,7 @@ export function apply(ctx) {
       status: 'generating',
       title: '',
       source: { kind: 'file', path: document.rel, abs: document.abs },
+      startNotified: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       items: [],
@@ -482,13 +600,20 @@ export function apply(ctx) {
 
   function activeWorkbench(sessionId, root) {
     const id = activeByScope.get(scopeKey(sessionId, root))
-    return id === undefined ? undefined : workbenches.get(id)
+    if (id === undefined) return undefined
+    const record = workbenches.get(id)
+    return isOpenWorkbench(record) ? record : undefined
   }
 
-  /** Every workbench this session created in this workspace, newest first. */
+  /** Every open workbench this session created in this workspace, newest first. */
   function workbenchesForScope(sessionId, root) {
     return [...workbenches.values()]
-      .filter((record) => record.sessionId === sessionId && sameWorkspaceRoot(record.workspaceRoot, root))
+      .filter(
+        (record) =>
+          isOpenWorkbench(record) &&
+          record.sessionId === sessionId &&
+          sameWorkspaceRoot(record.workspaceRoot, root),
+      )
       .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
   }
 
@@ -531,6 +656,76 @@ export function apply(ctx) {
       throw new HttpError(409, 'no-workspace', '当前会话还没有工作区，先打开一个工作区再继续。')
     }
     return root
+  }
+
+  /**
+   * Send a control message to the main session. The workbench must keep
+   * working when the agent is not running, so a missing/failed delivery is a
+   * boolean, not an exception.
+   */
+  async function notifyAgent(sessionId, text) {
+    const agent = agentOf(sessionId)
+    if (agent === undefined || typeof agent.followup !== 'function') return false
+    try {
+      // `followup` takes a complete user message, not just content: the session
+      // records it verbatim and the provider rejects a request whose message
+      // lacks `role`, which would break this turn and every later one.
+      await agent.followup(buildAgentNotice(text, randomUUID()))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Resolve a notice locale: explicit client id, then the Host locale setting, then DSH's English fallback. */
+  function resolveLocale(explicit) {
+    const normalize = (value) => {
+      const text = String(value ?? '').trim().toLowerCase()
+      if (text.startsWith('zh')) return 'zh'
+      if (text.startsWith('en')) return 'en'
+      return ''
+    }
+    const direct = normalize(explicit)
+    if (direct !== '') return direct
+    try {
+      const settings = ctx.get('settings')
+      const section = settings && typeof settings.get === 'function' ? settings.get('locale') : undefined
+      const stored = normalize(section && section.preference)
+      if (stored !== '') return stored
+    } catch {
+      // fall through to the default
+    }
+    return 'en'
+  }
+
+  function localizeCommandError(error, locale, arg) {
+    if (locale === 'zh' || !(error instanceof HttpError)) return describeError(error)
+    switch (error.code) {
+      case 'invalid':
+        return 'File name cannot be empty.'
+      case 'outside-workspace':
+        return 'That file is outside the current workspace.'
+      case 'unsupported':
+        return 'That file type is not supported. Try .md / .txt / .json / .yaml.'
+      case 'ambiguous':
+        return `Multiple files match "${arg}". Use a relative path.`
+      case 'not-found':
+        return `Could not find "${arg}". Run /decision to pick a file, or check the name.`
+      default:
+        return describeError(error)
+    }
+  }
+
+  /** Remove a workbench record and, if it was active, hand the slot to the newest open one. */
+  function dropWorkbench(workbench) {
+    workbenches.delete(workbench.id)
+    documentCache.delete(workbench.id)
+    const key = scopeKey(workbench.sessionId, workbench.workspaceRoot)
+    if (activeByScope.get(key) === workbench.id) {
+      activeByScope.delete(key)
+      const next = workbenchesForScope(workbench.sessionId, workbench.workspaceRoot)[0]
+      if (next !== undefined) activeByScope.set(key, next.id)
+    }
   }
 
   function requireItem(workbench, itemId) {
@@ -707,6 +902,36 @@ export function apply(ctx) {
     touch(workbench)
     await saveNow()
     return workbench
+  }
+
+  // --- resolution file --------------------------------------------------------
+
+  /**
+   * Write the durable output of a workbench. The file is the hand-off to the
+   * project; the in-memory workbench is deleted after a successful write.
+   */
+  async function writeResolution(workbench, root) {
+    const targetDirectory = join(root, 'docs', 'decisions')
+    if (!isPathInside(root, targetDirectory)) {
+      throw new HttpError(400, 'outside-workspace', '决策记录目录不在当前工作区内。')
+    }
+    const digest = buildDigest(workbench)
+    const date = new Date().toLocaleDateString('sv-SE')
+    const title = workbench.title || basename(workbench.source.path, extname(workbench.source.path))
+    const slug = slugify(title)
+    await mkdir(targetDirectory, { recursive: true })
+    let target = join(targetDirectory, `${date}-${slug}.md`)
+    for (let attempt = 2; attempt < 20; attempt += 1) {
+      if (!(await isFile(target))) break
+      target = join(targetDirectory, `${date}-${slug}-${attempt}.md`)
+    }
+    const content = buildResolution(workbench, { generatedAt: new Date().toLocaleString('zh-CN') })
+    await writeFile(target, content, 'utf8')
+    return {
+      path: toPosixPath(relative(root, target)),
+      absolute: toPosixPath(target),
+      digest,
+    }
   }
 
   // --- generation -------------------------------------------------------------
@@ -938,6 +1163,9 @@ export function apply(ctx) {
       return existing
     }
     const workbench = createWorkbench(sessionId, document, root)
+    // The start notice is sent by the panel once it knows the active locale;
+    // this keeps the hand-off localized for both `/decision <file>` and the
+    // file picker. Generation itself starts immediately.
     void generateDecisions(workbench)
     return workbench
   }
@@ -1014,6 +1242,32 @@ export function apply(ctx) {
       const workbench = await startFromDocument(sessionId, document, root, body.restart === true)
       await refreshSourceState(workbench)
       sendJson(response, 200, { ok: true, workbench })
+    })
+
+    // The panel calls this once it has mounted the workbench, so the start
+    // hand-off carries the browser's active locale (the Host has no reliable
+    // view of a browser-derived language). The flag makes it idempotent.
+    route('/start-notice', ['POST'], async (request, response) => {
+      await ensureLoaded()
+      const body = JSON.parse((await readBody(request)) || '{}')
+      const sessionId = requireSessionId(body.sessionId)
+      const root = await requireWorkspace(sessionId)
+      const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
+      if (workbench.startNotified === true) {
+        sendJson(response, 200, { ok: true, notified: true, already: true })
+        return
+      }
+      const locale = resolveLocale(body.locale)
+      const notified = await notifyAgent(
+        sessionId,
+        buildStartNotice({ sourcePath: workbench.source.path, locale }),
+      )
+      if (notified) {
+        workbench.startNotified = true
+        touch(workbench)
+        await saveNow()
+      }
+      sendJson(response, 200, { ok: true, notified, already: false, locale })
     })
 
     route('/workbench', ['GET'], async (request, response) => {
@@ -1185,25 +1439,38 @@ export function apply(ctx) {
       const sessionId = requireSessionId(body.sessionId)
       const root = await requireWorkspace(sessionId)
       const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
-      const digest = buildDigest(workbench)
-      const agent = agentOf(sessionId)
-      if (agent === undefined || typeof agent.followup !== 'function') {
-        throw new HttpError(409, 'no-agent', '主会话当前不在运行，无法回写摘要。摘要已经生成，可以先复制保存。')
-      }
-      try {
-        await agent.followup({
-          content: [{ type: 'text', text: digest }],
-          source: { kind: 'user' },
-        })
-      } catch (error) {
-        throw new HttpError(500, 'delivery-failed', `摘要回写主会话失败：${describeError(error)}`)
-      }
-      workbench.status = 'submitted'
-      workbench.submittedAt = Date.now()
-      workbench.digest = digest
-      touch(workbench)
+      const stats = countDecisions(workbench.items)
+      const autoRead = body.autoRead === true
+      const locale = resolveLocale(body.locale)
+      // The file is the durable result; if writing it fails the workbench stays
+      // open so the user can retry. Notification is best effort, but the
+      // workbench is done either way.
+      const written = await writeResolution(workbench, root)
+      // Remove the record before waking the session: by the time the agent
+      // reads the notice, the workbench is already gone and the file is the
+      // only source of truth.
+      dropWorkbench(workbench)
       await saveNow()
-      sendJson(response, 200, { ok: true, workbench, digest, stats: countDecisions(workbench.items) })
+      const notified = await notifyAgent(
+        sessionId,
+        buildFinishNotice({
+          sourcePath: workbench.source.path,
+          resolutionPath: written.path,
+          stats,
+          autoRead,
+          locale,
+        }),
+      )
+      sendJson(response, 200, {
+        ok: true,
+        deletedId: workbench.id,
+        path: written.path,
+        absolute: written.absolute,
+        digest: written.digest,
+        stats,
+        autoRead,
+        notified,
+      })
     })
 
     route('/write', ['POST'], async (request, response) => {
@@ -1212,36 +1479,8 @@ export function apply(ctx) {
       const sessionId = requireSessionId(body.sessionId)
       const root = await requireWorkspace(sessionId)
       const workbench = requireActiveWorkbench(sessionId, body.workbenchId, root)
-      const targetDirectory = join(root, 'docs', 'decisions')
-      if (!isPathInside(root, targetDirectory)) {
-        throw new HttpError(400, 'outside-workspace', '决策记录目录不在当前工作区内。')
-      }
-      const digest = buildDigest(workbench)
-      const date = new Date().toLocaleDateString('sv-SE')
-      const title = workbench.title || basename(workbench.source.path, extname(workbench.source.path))
-      const slug = slugify(title)
-      await mkdir(targetDirectory, { recursive: true })
-      let target = join(targetDirectory, `${date}-${slug}.md`)
-      for (let attempt = 2; attempt < 20; attempt += 1) {
-        if (!(await isFile(target))) break
-        target = join(targetDirectory, `${date}-${slug}-${attempt}.md`)
-      }
-      const content = [
-        `# 决策记录：${title}`,
-        '',
-        `> 来源：\`${workbench.source.path}\``,
-        `> 生成时间：${new Date().toLocaleString('zh-CN')}`,
-        `> 工作台：${workbench.id}`,
-        '',
-        digest,
-        '',
-      ].join('\n')
-      await writeFile(target, content, 'utf8')
-      sendJson(response, 200, {
-        ok: true,
-        path: toPosixPath(relative(root, target)),
-        absolute: toPosixPath(target),
-      })
+      const written = await writeResolution(workbench, root)
+      sendJson(response, 200, { ok: true, path: written.path, absolute: written.absolute })
     })
 
     route('/resync', ['POST'], async (request, response) => {
@@ -1258,6 +1497,28 @@ export function apply(ctx) {
         stats: countDecisions(workbench.items),
       })
     })
+
+    // Workbenches are cheap to create but can accumulate in the picker. Delete
+    // is scoped like every other route: another session or another workspace
+    // gets the same 404 as an unknown id. Deleting the active workbench hands
+    // "continue last" to the newest remaining one in this scope.
+    route('/delete', ['POST'], async (request, response) => {
+      await ensureLoaded()
+      const body = JSON.parse((await readBody(request)) || '{}')
+      const sessionId = requireSessionId(body.sessionId)
+      const root = await requireWorkspace(sessionId)
+      const workbenchId = typeof body.workbenchId === 'string' ? body.workbenchId : ''
+      if (workbenchId === '') throw new HttpError(400, 'invalid', 'workbenchId is required')
+      const workbench = requireWorkbench(sessionId, workbenchId, root)
+      dropWorkbench(workbench)
+      await saveNow()
+      const remaining = activeWorkbench(sessionId, root)
+      sendJson(response, 200, {
+        ok: true,
+        deletedId: workbench.id,
+        activeId: remaining !== undefined ? remaining.id : '',
+      })
+    })
   }
 
   const webServer = ctx.get('webServer')
@@ -1271,13 +1532,22 @@ export function apply(ctx) {
 
   async function handleDecisionCommand(invocation) {
     const parsed = parseDecisionInput(invocation.rawInput)
+    const locale = resolveLocale()
     const sessionId = sessionIdOf(invocation.agent)
     if (sessionId === undefined) {
-      return { kind: 'error', text: '无法确定当前会话，请重试。' }
+      return {
+        kind: 'error',
+        text: locale === 'zh' ? '无法确定当前会话，请重试。' : 'Could not determine the current session. Please retry.',
+      }
     }
     const root = await resolveWorkspace(invocation.agent)
     if (root === undefined) {
-      return { kind: 'error', text: '当前会话还没有工作区。先打开一个工作区，再运行 /decision。' }
+      return {
+        kind: 'error',
+        text: locale === 'zh'
+          ? '当前会话还没有工作区。先打开一个工作区，再运行 /decision。'
+          : 'This session has no workspace yet. Open a workspace, then run /decision.',
+      }
     }
 
     await ensureLoaded()
@@ -1286,19 +1556,16 @@ export function apply(ctx) {
 
     if (parsed.mode === 'pick') {
       setPending(sessionId, { mode: 'pick', workspaceRoot })
-      return {
-        kind: 'success',
-        text: '决策工作台已打开。在右侧选择一份文档开始，或输入 /decision <文件名> 直接开始。',
-      }
+      return { kind: 'success', text: buildCommandHint({ locale, mode: 'pick' }) }
     }
 
     try {
       const document = await resolveDocument(root, parsed.arg)
       const workbench = await startFromDocument(sessionId, document, root)
       setPending(sessionId, { mode: 'workbench', workbenchId: workbench.id, workspaceRoot })
-      return { kind: 'success', text: `正在打开决策工作台：${document.rel}` }
+      return { kind: 'success', text: buildCommandHint({ locale, mode: 'file', path: document.rel }) }
     } catch (error) {
-      return { kind: 'error', text: describeError(error) }
+      return { kind: 'error', text: localizeCommandError(error, locale, parsed.arg) }
     }
   }
 
@@ -1309,7 +1576,9 @@ export function apply(ctx) {
       // into a leading-input claim, so `/decision` + Enter only opens an
       // argument stage instead of executing. Without it, both `/decision` and
       // `/decision <file>` execute immediately.
-      description: '打开决策工作台：/decision 选择文件，/decision <文件名> 直接开始',
+      description: resolveLocale() === 'zh'
+        ? '打开决策工作台：/decision 选择文件，/decision <文件名> 直接开始'
+        : 'Open the Decision Workbench: /decision to pick a file, /decision <filename> to start directly',
       handler: handleDecisionCommand,
     }),
   )
