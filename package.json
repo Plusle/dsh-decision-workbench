@@ -1,7 +1,7 @@
 {
   "name": "dsh-decision-workbench",
-  "version": "0.4.0",
-  "description": "Decision Workbench for DeepSeek Harness: /decision opens a right sidebar panel that turns a spec's open decisions into per-question choices, then writes a resolution file and hands it back to the session without letting the agent start work.",
+  "version": "0.4.1",
+  "description": "Decision Workbench for DeepSeek Harness: /decision opens a right sidebar panel that turns a spec's open decisions into per-question choices, then writes a resolution file and optionally hands it to the session to start implementation.",
   "type": "module",
   "main": "src/index.js",
   "exports": {

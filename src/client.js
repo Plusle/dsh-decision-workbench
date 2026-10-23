@@ -44,6 +44,7 @@ window.__ModuleLoader__.load({
       'picker.hint': '会从当前工作区里找 Markdown / 文本类文档。也可以直接用 /decision <文件名> 开始。',
       'picker.search': '搜索相对路径或文件名…',
       'picker.searchHint': '输入相对路径或文件名开始搜索，例如 docs/spec.md。',
+      'picker.keyboardHint': '↑/↓ 选择，Enter 打开',
       'picker.loading': '正在读取工作区…',
       'picker.empty': '工作区里没有找到可用的文档。',
       'picker.emptyQuery': '没有匹配的文件。',
@@ -119,8 +120,8 @@ window.__ModuleLoader__.load({
       'digest.cancel': '返回',
       'digest.copy': '复制摘要',
       'digest.copied': '已复制',
-      'digest.autoRead': '完成后让主会话立即读取结果文件',
-      'digest.autoReadHint': '默认只通知结果路径，等待你的下一条指令；勾选后主会话会读取结果文件，但仍不应开始执行。',
+      'digest.autoRead': '完成后立即交给主 agent 执行',
+      'digest.autoReadHint': '默认只通知结果路径并等待你的下一条指令；勾选后主 agent 会读取结果文件并直接开始执行「已决定」的项，未决项仍需先问你。',
       'digest.warning': '还有未定项（拿不准 / 稍后 / 未处理）。结果文件会把它们标成待定，不会被猜测。',
       'digest.submitting': '正在生成结果…',
       'digest.submitted': '结果文件已生成',
@@ -185,6 +186,7 @@ window.__ModuleLoader__.load({
       'picker.hint': 'Looks for Markdown and text documents in the current workspace. You can also start with /decision <filename>.',
       'picker.search': 'Search by relative path or file name…',
       'picker.searchHint': 'Type a relative path or file name to search, e.g. docs/spec.md.',
+      'picker.keyboardHint': '↑/↓ to select, Enter to open',
       'picker.loading': 'Reading the workspace…',
       'picker.empty': 'No usable documents were found in the workspace.',
       'picker.emptyQuery': 'No matching files.',
@@ -260,8 +262,8 @@ window.__ModuleLoader__.load({
       'digest.cancel': 'Back',
       'digest.copy': 'Copy summary',
       'digest.copied': 'Copied',
-      'digest.autoRead': 'Let the main session read the result file immediately',
-      'digest.autoReadHint': 'By default the session only gets the result path and waits for your next request; when checked it reads the file, but still must not start implementing.',
+      'digest.autoRead': 'Hand the result to the main agent immediately',
+      'digest.autoReadHint': 'By default only the result path is sent and the session waits for your next request; when checked, the agent reads the result file and starts implementing the decided items. Unsure/deferred items are still not guessed.',
       'digest.warning': 'Some decisions are unresolved (unsure / later / untouched). The result file marks them as still open; they are never guessed.',
       'digest.submitting': 'Writing the result…',
       'digest.submitted': 'Result file written',
@@ -637,12 +639,17 @@ window.__ModuleLoader__.load({
       const [reloadKey, setReloadKey] = React.useState(0)
       const [deleting, setDeleting] = React.useState('')
       const [deleteTarget, setDeleteTarget] = React.useState(null)
+      const [selectedIndex, setSelectedIndex] = React.useState(-1)
+      const fileRefs = React.useRef([])
+      const lastFileSignatureRef = React.useRef('')
       const t = props.t
 
       React.useEffect(() => {
         const search = query.trim()
         if (search === '') {
           setFiles([])
+          setSelectedIndex(-1)
+          lastFileSignatureRef.current = ''
           setError('')
           return undefined
         }
@@ -654,12 +661,22 @@ window.__ModuleLoader__.load({
               `/files?sessionId=${encodeURIComponent(props.sessionId)}&query=${encodeURIComponent(search)}`,
             )
             if (!cancelled) {
-              setFiles(Array.isArray(data.files) ? data.files : [])
+              const next = Array.isArray(data.files) ? data.files : []
+              const signature = next.map((file) => file.path).join('\n')
+              // Keep the highlight when more typing produced the same candidate
+              // list; reset it when the list (including order) actually changed.
+              if (signature !== lastFileSignatureRef.current) {
+                setSelectedIndex(-1)
+                lastFileSignatureRef.current = signature
+              }
+              setFiles(next)
               setError('')
             }
           } catch (failure) {
             if (!cancelled) {
               setFiles([])
+              setSelectedIndex(-1)
+              lastFileSignatureRef.current = ''
               setError(String(failure.message || failure))
             }
           }
@@ -708,6 +725,42 @@ window.__ModuleLoader__.load({
           setError(String(failure.message || failure))
         } finally {
           setBusy('')
+        }
+      }
+
+      // The input keeps focus while ↑/↓ move the candidate highlight. A changed
+      // result list clears the highlight (the effect above); an unchanged list
+      // keeps it across extra typed characters.
+      const moveSelection = (delta) => {
+        if (!Array.isArray(files) || files.length === 0) return
+        const next = selectedIndex < 0
+          ? (delta > 0 ? 0 : files.length - 1)
+          : Math.max(0, Math.min(files.length - 1, selectedIndex + delta))
+        setSelectedIndex(next)
+        const element = fileRefs.current[next]
+        if (element && typeof element.scrollIntoView === 'function') {
+          element.scrollIntoView({ block: 'nearest' })
+        }
+      }
+
+      const onSearchKeyDown = (event) => {
+        if (event.isComposing) return
+        if (event.key === 'ArrowDown') {
+          if (!Array.isArray(files) || files.length === 0) return
+          event.preventDefault()
+          moveSelection(1)
+          return
+        }
+        if (event.key === 'ArrowUp') {
+          if (!Array.isArray(files) || files.length === 0) return
+          event.preventDefault()
+          moveSelection(-1)
+          return
+        }
+        if (event.key === 'Enter') {
+          if (busy !== '' || selectedIndex < 0 || !Array.isArray(files) || !files[selectedIndex]) return
+          event.preventDefault()
+          choose(files[selectedIndex].path)
         }
       }
 
@@ -867,8 +920,17 @@ window.__ModuleLoader__.load({
             placeholder: t('picker.search'),
             value: query,
             onChange: (event) => setQuery(event.target.value),
+            onKeyDown: onSearchKeyDown,
+            role: 'combobox',
             'aria-label': t('picker.search'),
+            'aria-autocomplete': 'list',
+            'aria-expanded': Array.isArray(files) && files.length > 0,
+            'aria-controls': 'dsh-dw-file-list',
+            'aria-activedescendant': selectedIndex >= 0 ? `dsh-dw-file-${selectedIndex}` : undefined,
           }),
+          Array.isArray(files) && files.length > 0
+            ? h('div', { style: { color: T.secondary, fontSize: 11, padding: '0 2px' } }, t('picker.keyboardHint'))
+            : null,
           error !== ''
             ? h(
                 'div',
@@ -895,16 +957,25 @@ window.__ModuleLoader__.load({
                 )
               : h(
                   'ul',
-                  { style: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 } },
-                  files.map((file) =>
+                  {
+                    id: 'dsh-dw-file-list',
+                    role: 'listbox',
+                    'aria-label': t('picker.title'),
+                    style: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 },
+                  },
+                  files.map((file, index) =>
                     h(
                       'li',
-                      { key: file.path },
+                      { key: file.path, role: 'option', id: `dsh-dw-file-${index}`, 'aria-selected': selectedIndex === index },
                       h(
                         'button',
                         {
                           type: 'button',
+                          ref: (element) => {
+                            fileRefs.current[index] = element
+                          },
                           onClick: () => choose(file.path),
+                          onMouseEnter: () => setSelectedIndex(index),
                           disabled: busy !== '',
                           title: file.path,
                           style: {
@@ -914,20 +985,12 @@ window.__ModuleLoader__.load({
                             gap: 8,
                             padding: '8px 10px',
                             borderRadius: 8,
-                            border: '1px solid transparent',
-                            background: 'transparent',
+                            border: `1px solid ${selectedIndex === index ? T.border : 'transparent'}`,
+                            background: selectedIndex === index ? T.layer1 : 'transparent',
                             color: T.primary,
                             font: 'inherit',
                             textAlign: 'left',
                             cursor: busy === '' ? 'pointer' : 'default',
-                          },
-                          onMouseEnter: (event) => {
-                            event.currentTarget.style.background = T.layer1
-                            event.currentTarget.style.borderColor = T.border
-                          },
-                          onMouseLeave: (event) => {
-                            event.currentTarget.style.background = 'transparent'
-                            event.currentTarget.style.borderColor = 'transparent'
                           },
                         },
                         h('span', { style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, file.name),

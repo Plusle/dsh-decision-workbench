@@ -122,6 +122,16 @@ test('workbench deletion uses an in-panel confirmation, not a native dialog', as
   assert.match(source, /deleteTarget !== null/)
 })
 
+test('file picker keyboard selection is wired', async () => {
+  const source = await readFile(new URL('../src/client.js', import.meta.url), 'utf8')
+
+  assert.match(source, /onKeyDown: onSearchKeyDown/)
+  assert.match(source, /ArrowDown/)
+  assert.match(source, /ArrowUp/)
+  assert.match(source, /lastFileSignatureRef/)
+  assert.match(source, /aria-activedescendant/)
+})
+
 test('primary buttons use the themed filled-button pair', async () => {
   const source = await readFile(new URL('../src/client.js', import.meta.url), 'utf8')
 

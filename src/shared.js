@@ -869,8 +869,8 @@ export function buildStartNotice({ sourcePath, locale = 'en' }) {
 
 /**
  * Sent when the workbench has written its resolution file. By default the
- * session is told not to read it yet; "autoRead" flips that one instruction
- * while still forbidding implementation work.
+ * session is told not to read it yet and to wait. "autoRead" instead hands
+ * the decided items over immediately so the agent starts working.
  */
 export function buildFinishNotice({ sourcePath, resolutionPath, stats = {}, autoRead = false, locale = 'en' }) {
   if (String(locale ?? '').toLowerCase().startsWith('zh')) {
@@ -880,7 +880,7 @@ export function buildFinishNotice({ sourcePath, resolutionPath, stats = {}, auto
       `结果文件：${resolutionPath || '（未写入）'}`,
       `统计：已决定 ${stats.decided || 0} / 拿不准 ${stats.unsure || 0} / 稍后 ${stats.deferred || 0} / 未处理 ${stats.unseen || 0}`,
       autoRead
-        ? '请读取结果文件，然后只回复“收到”。不要开始执行、修改文件或制定计划；等待用户下一步指令。'
+        ? '请读取结果文件，然后立即按其中「已决定」的项开始执行；不要先回复确认，也不要等待用户再次确认。「拿不准 / 稍后 / 未处理」的项不得自行猜测，遇到依赖它们的步骤先向用户确认。'
         : '请只回复“收到”。不要读取结果文件，也不要开始执行、修改文件或制定计划；等待用户下一步指令。',
     ].join('\n')
   }
@@ -890,7 +890,7 @@ export function buildFinishNotice({ sourcePath, resolutionPath, stats = {}, auto
     `Result file: ${resolutionPath || '(not written)'}`,
     `Stats: decided ${stats.decided || 0} / unsure ${stats.unsure || 0} / deferred ${stats.deferred || 0} / untouched ${stats.unseen || 0}`,
     autoRead
-      ? 'Please read the result file, then reply only "Received". Do not start executing, modify files, or make plans; wait for the user\'s next instruction.'
+      ? 'Read the result file, then immediately start implementing the decided items; do not reply with an acknowledgement first and do not wait for another confirmation. Never guess the unsure, deferred, or untouched items — ask the user before any step that depends on them.'
       : 'Please reply only "Received". Do not read the result file, and do not start executing, modify files, or make plans; wait for the user\'s next instruction.',
   ].join('\n')
 }

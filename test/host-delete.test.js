@@ -291,9 +291,12 @@ test('finishing writes a resolution file, notifies the session, and removes the 
     assert.equal(messages.length, 2)
     const autoNotice = messages[1].content[0].text
     assert.match(autoNotice, /\[Decision Workbench\] Work completed/)
-    assert.match(autoNotice, /Please read the result file/)
-    assert.doesNotMatch(autoNotice, /Do not read the result file/)
-    assert.match(autoNotice, /Do not start executing/)
+    assert.match(autoNotice, /Read the result file/)
+    assert.match(autoNotice, /immediately start implementing the decided items/)
+    assert.match(autoNotice, /do not reply with an acknowledgement first/)
+    assert.doesNotMatch(autoNotice, /reply only "Received"/)
+    assert.doesNotMatch(autoNotice, /Do not start executing/)
+    assert.match(autoNotice, /Never guess the unsure, deferred, or untouched items/)
 
     const saved = JSON.parse(await readFile(storeFile, 'utf8'))
     assert.deepEqual(saved.workbenches, [])

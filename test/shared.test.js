@@ -464,7 +464,9 @@ test('start and finish notices ask the session to acknowledge without acting', (
     locale: 'zh',
   })
   assert.match(auto, /请读取结果文件/)
-  assert.doesNotMatch(auto, /不要读取结果文件/)
+  assert.match(auto, /立即按其中「已决定」的项开始执行/)
+  assert.match(auto, /不要先回复确认/)
+  assert.doesNotMatch(auto, /只回复“收到”/)
 
   const startEn = buildStartNotice({ sourcePath: 'docs/spec.md', locale: 'en' })
   assert.match(startEn, /\[Decision Workbench\] Work started/)
@@ -490,8 +492,10 @@ test('start and finish notices ask the session to acknowledge without acting', (
     autoRead: true,
     locale: 'en',
   })
-  assert.match(autoEn, /Please read the result file/)
-  assert.doesNotMatch(autoEn, /Do not read the result file/)
+  assert.match(autoEn, /Read the result file/)
+  assert.match(autoEn, /immediately start implementing the decided items/)
+  assert.match(autoEn, /do not reply with an acknowledgement first/)
+  assert.doesNotMatch(autoEn, /reply only "Received"/)
 })
 
 test('a notice reaches the session as a complete user message', () => {
